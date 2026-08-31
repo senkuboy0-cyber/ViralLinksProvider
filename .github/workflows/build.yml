@@ -20,6 +20,15 @@ jobs:
           java-version: "17"
           distribution: "temurin"
 
+      - name: Create Gradle Wrapper
+        run: |
+          if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+            mkdir -p gradle/wrapper
+            echo "Downloading Gradle wrapper jar..."
+            curl -sL "https://github.com/gradle/gradle/raw/v9.6.0-milestone-3/gradle/wrapper/gradle-wrapper.jar" -o gradle/wrapper/gradle-wrapper.jar || \
+            curl -sL "https://raw.githubusercontent.com/gradle/gradle/v9.6.0-milestone-3/gradle/wrapper/gradle-wrapper.jar" -o gradle/wrapper/gradle-wrapper.jar
+          fi
+
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
