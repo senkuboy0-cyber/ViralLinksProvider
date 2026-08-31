@@ -4,14 +4,15 @@ import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
-import android.util.Log
-import android.view.LayoutInflater
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.widget.Button
-import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -22,124 +23,127 @@ import com.lagradost.cloudstream3.plugins.Plugin
 
 class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFragment() {
 
-    @SuppressLint("UseCompatLoadingForDrawables", "SetTextI18n")
+    @SuppressLint("SetTextI18n")
     override fun onCreateView(
-        inflater: LayoutInflater,
+        inflater: android.view.LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        // Try multiple package names for resources
-        val packageNames = listOf(
-            "com.musicbd",
-            plugin.javaClass.`package`.name,
-            requireContext().packageName
-        )
+        // Create programmatic UI
+        val context = requireContext()
         
-        var layoutId = 0
-        var foundPackage = ""
-        
-        for (pkg in packageNames) {
-            val id = plugin.resources?.getIdentifier(
-                "bottom_sheet_layout",
-                "layout",
-                pkg
-            ) ?: 0
-            Log.d("MusicbdSettings", "Trying package: $pkg, layoutId: $id")
-            if (id != 0) {
-                layoutId = id
-                foundPackage = pkg
-                break
-            }
+        val scrollView = ScrollView(context).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         }
         
-        Log.d("MusicbdSettings", "Found package: $foundPackage, layoutId: $layoutId")
-        
-        if (layoutId == 0) {
-            // Create a simple debug view
-            return TextView(context).apply {
-                text = "Error: Layout not found\n\nPackages tried: ${packageNames.joinToString()}\n\nPlugin class: ${plugin.javaClass.name}\nPlugin package: ${plugin.javaClass.`package`.name}"
-                setPadding(32, 32, 32, 32)
-            }
+        val mainLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16))
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setBackgroundColor(Color.parseColor("#1A1A2E"))
         }
         
-        val view = inflater.inflate(layoutId, container, false)
-
-        // Get drawable IDs using found package
-        val outlineId = plugin.resources?.getIdentifier("outline", "drawable", foundPackage) ?: 0
-        val saveIconId = plugin.resources?.getIdentifier("save_icon", "drawable", foundPackage) ?: 0
-
-        // Get view IDs
-        val saveViewId = plugin.resources?.getIdentifier("save", "id", foundPackage) ?: 0
-        val bypassBtnId = plugin.resources?.getIdentifier("cf_bypass_btn", "id", foundPackage) ?: 0
-        val clearBtnId = plugin.resources?.getIdentifier("cf_clear_btn", "id", foundPackage) ?: 0
-
-        Log.d("MusicbdSettings", "IDs - outline: $outlineId, saveIcon: $saveIconId, saveView: $saveViewId, bypass: $bypassBtnId, clear: $clearBtnId")
-
-        // Save button
-        if (saveViewId != 0) {
-            val saveBtn = view.findViewById<ImageView>(saveViewId)
-            if (saveIconId != 0) {
-                try {
-                    saveBtn?.setImageDrawable(plugin.resources?.getDrawable(saveIconId, null))
-                } catch (e: Exception) {
-                    Log.e("MusicbdSettings", "Error setting icon: ${e.message}")
-                }
-            }
-            if (outlineId != 0) {
-                try {
-                    saveBtn?.background = plugin.resources?.getDrawable(outlineId, null)
-                } catch (e: Exception) {
-                    Log.e("MusicbdSettings", "Error setting background: ${e.message}")
-                }
-            }
-            saveBtn?.setOnClickListener {
-                context?.let { ctx ->
-                    AlertDialog.Builder(ctx)
-                        .setTitle("Restart App?")
-                        .setMessage("Save changes and restart the app?")
-                        .setPositiveButton("Yes") { _, _ ->
-                            restartApp(ctx)
-                        }
-                        .setNegativeButton("No") { dialog, _ ->
-                            dialog.dismiss()
-                            Toast.makeText(ctx, "Changes saved", Toast.LENGTH_SHORT).show()
-                            dismiss()
-                        }
-                        .show()
-                }
+        // Title
+        val titleText = TextView(context).apply {
+            text = "Musicbd25 Settings"
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dpToPx(16)
             }
         }
-
-        // Cloudflare bypass button
-        if (bypassBtnId != 0) {
-            val bypassBtn = view.findViewById<Button>(bypassBtnId)
-            bypassBtn?.setOnClickListener {
-                val dialog = CloudflareWebViewDialog(
-                    targetUrl = "https://musicbd25.site",
-                    onFinished = { saved ->
-                        if (saved) bypassBtn.text = "✅ CF Cookies Saved"
-                    }
-                )
-                dialog.show(parentFragmentManager, "musicbd_cf_bypass")
+        mainLayout.addView(titleText)
+        
+        // Divider
+        val divider = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(1)
+            ).apply {
+                bottomMargin = dpToPx(16)
             }
-
-            // Update button label
-            val cfCookies = MusicbdPlugin.cfCookies
-            bypassBtn?.text = if (cfCookies.isNotBlank()) {
+            setBackgroundColor(Color.parseColor("#333333"))
+        }
+        mainLayout.addView(divider)
+        
+        // Section Title
+        val sectionTitle = TextView(context).apply {
+            text = "Cloudflare Protection"
+            textSize = 17f
+            setTextColor(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dpToPx(8)
+            }
+        }
+        mainLayout.addView(sectionTitle)
+        
+        // Description
+        val descText = TextView(context).apply {
+            text = "If Musicbd25 shows a challenge screen, tap Bypass to solve it with WebView."
+            textSize = 13f
+            setTextColor(Color.parseColor("#888888"))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dpToPx(12)
+            }
+        }
+        mainLayout.addView(descText)
+        
+        // Bypass Button
+        val bypassBtn = Button(context).apply {
+            text = if (MusicbdPlugin.cfCookies.isNotBlank()) {
                 "✅ CF Cookies Saved"
             } else {
                 "🛡️ Bypass Cloudflare"
             }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dpToPx(8)
+            }
+            setOnClickListener {
+                val dialog = CloudflareWebViewDialog(
+                    targetUrl = "https://musicbd25.site",
+                    onFinished = { saved ->
+                        if (saved) {
+                            bypassBtn.text = "✅ CF Cookies Saved"
+                        }
+                    }
+                )
+                dialog.show(parentFragmentManager, "musicbd_cf_bypass")
+            }
         }
-
-        // Clear CF Cookies button
-        if (clearBtnId != 0) {
-            val clearBtn = view.findViewById<Button>(clearBtnId)
-            clearBtn?.setOnClickListener {
+        mainLayout.addView(bypassBtn)
+        
+        // Clear Button
+        val clearBtn = Button(context).apply {
+            text = "Clear CF Cookies"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dpToPx(16)
+            }
+            setOnClickListener {
                 context?.let { ctx ->
                     AlertDialog.Builder(ctx)
                         .setTitle("Clear CF Cookies?")
-                        .setMessage("This will remove the saved Cloudflare cookies.")
+                        .setMessage("This will remove saved cookies. You will need to bypass again.")
                         .setPositiveButton("Clear") { _, _ ->
                             val host = MusicbdPlugin.cfCookieHost
                             if (host.isNotBlank()) {
@@ -152,10 +156,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                             MusicbdPlugin.cfCookies = ""
                             MusicbdPlugin.cfUserAgent = ""
                             MusicbdPlugin.cfCookieHost = ""
-                            
-                            if (bypassBtnId != 0) {
-                                view.findViewById<Button>(bypassBtnId)?.text = "🛡️ Bypass Cloudflare"
-                            }
+                            bypassBtn.text = "🛡️ Bypass Cloudflare"
                             Toast.makeText(ctx, "✅ CF Cookies cleared", Toast.LENGTH_SHORT).show()
                         }
                         .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
@@ -163,8 +164,10 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                 }
             }
         }
-
-        return view
+        mainLayout.addView(clearBtn)
+        
+        scrollView.addView(mainLayout)
+        return scrollView
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
@@ -172,16 +175,9 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         (dialog as? BottomSheetDialog)?.behavior?.state = BottomSheetBehavior.STATE_EXPANDED
         return dialog
     }
-
-    private fun restartApp(context: Context) {
-        val packageManager = context.packageManager
-        val intent = packageManager.getLaunchIntentForPackage(context.packageName)
-        val componentName = intent?.component
-
-        if (componentName != null) {
-            val restartIntent = Intent.makeRestartActivityTask(componentName)
-            context.startActivity(restartIntent)
-            Runtime.getRuntime().exit(0)
-        }
+    
+    private fun dpToPx(dp: Int): Int {
+        val scale = context?.resources?.displayMetrics?.density ?: 1f
+        return (dp * scale + 0.5f).toInt()
     }
 }
