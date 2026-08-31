@@ -17,9 +17,19 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.lagradost.cloudstream3.plugins.Plugin
-import com.lagradost.cloudstream3.BuildConfig
 
 class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFragment() {
+
+    // Get package name from plugin
+    private fun getPackageName(): String {
+        return try {
+            val context = plugin.javaClass.classLoader?.loadClass("com.musicbd.BuildConfig")
+            val field = context?.getField("LIBRARY_PACKAGE_NAME")
+            field?.get(null) as? String ?: "com.musicbd"
+        } catch (e: Exception) {
+            "com.musicbd"
+        }
+    }
 
     @SuppressLint("UseCompatLoadingForDrawables", "SetTextI18n")
     override fun onCreateView(
@@ -27,10 +37,12 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
+        val packageName = getPackageName()
+        
         val id = plugin.resources!!.getIdentifier(
             "bottom_sheet_layout",
             "layout",
-            BuildConfig.LIBRARY_PACKAGE_NAME
+            packageName
         )
         val layout = plugin.resources!!.getLayout(id)
         val view = inflater.inflate(layout, container, false)
@@ -38,16 +50,16 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         val outlineId = plugin.resources!!.getIdentifier(
             "outline",
             "drawable",
-            BuildConfig.LIBRARY_PACKAGE_NAME
+            packageName
         )
 
         // Save button
         val saveIconId = plugin.resources!!.getIdentifier(
             "save_icon",
             "drawable",
-            BuildConfig.LIBRARY_PACKAGE_NAME
+            packageName
         )
-        val saveBtn = view.findView<ImageView>("save")
+        val saveBtn = view.findViewById<ImageView>(id = saveIconId)
         saveBtn.setImageDrawable(plugin.resources!!.getDrawable(saveIconId, null))
         saveBtn.background = plugin.resources!!.getDrawable(outlineId, null)
         saveBtn.setOnClickListener {
@@ -68,7 +80,8 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
 
         // ---- Cloudflare bypass button ----------------------------------------
-        val bypassBtn = view.findView<Button>("cf_bypass_btn")
+        val cfBypassBtnId = plugin.resources!!.getIdentifier("cf_bypass_btn", "id", packageName)
+        val bypassBtn = view.findViewById<Button>(cfBypassBtnId)
         bypassBtn.setOnClickListener {
             val dialog = CloudflareWebViewDialog(
                 targetUrl = "https://musicbd25.site",
@@ -78,7 +91,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
             )
             dialog.show(parentFragmentManager, "musicbd_cf_bypass")
         }
-        
+
         // Update button label to show current cookie status
         val cfCookies = MusicbdPlugin.cfCookies
         if (cfCookies.isNotBlank()) {
@@ -88,7 +101,8 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
 
         // ---- Clear CF Cookies button -----------------------------------------
-        val clearBtn = view.findView<Button>("cf_clear_btn")
+        val cfClearBtnId = plugin.resources!!.getIdentifier("cf_clear_btn", "id", packageName)
+        val clearBtn = view.findViewById<Button>(cfClearBtnId)
         clearBtn.setOnClickListener {
             context?.let { ctx ->
                 AlertDialog.Builder(ctx)
@@ -118,11 +132,6 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
 
         return view
-    }
-
-    private fun <T : View> View.findView(name: String): T {
-        val id = plugin.resources!!.getIdentifier(name, "id", BuildConfig.LIBRARY_PACKAGE_NAME)
-        return findViewById(id)
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
