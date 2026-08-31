@@ -20,47 +20,36 @@ import com.lagradost.cloudstream3.plugins.Plugin
 
 class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFragment() {
 
-    // Get CloudStream package name for resource access
-    private fun getCsPackageName(): String {
-        return "com.lagradost.cloudstream3"
-    }
-
     @SuppressLint("UseCompatLoadingForDrawables", "SetTextI18n")
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        val csPackage = getCsPackageName()
+        // Use the plugin's class loader to get the correct package name
+        val pluginPackageName = plugin.javaClass.`package`.name
         
-        // Get layout ID from CloudStream's resources
-        val layoutId = plugin.resources!!.getIdentifier(
+        // Use requireContext().resources for runtime resource access
+        val resources = requireContext().resources
+        val packageName = requireContext().packageName
+        
+        // Get layout ID
+        val layoutId = resources.getIdentifier(
             "bottom_sheet_layout",
             "layout",
-            csPackage
+            packageName
         )
         
         if (layoutId == 0) {
             // Fallback: try direct R class
             return try {
-                val rClass = Class.forName("$csPackage.R\$layout")
+                val rClass = Class.forName("$packageName.R\$layout")
                 val field = rClass.getField("bottom_sheet_layout")
                 val id = field.getInt(null)
                 inflater.inflate(id, container, false)
             } catch (e: Exception) {
-                // Last resort: try plugin package
-                val pluginLayoutId = plugin.resources!!.getIdentifier(
-                    "bottom_sheet_layout",
-                    "layout",
-                    "com.musicbd"
-                )
-                if (pluginLayoutId != 0) {
-                    inflater.inflate(pluginLayoutId, container, false)
-                } else {
-                    // Return empty view as fallback
-                    android.widget.TextView(context).apply {
-                        text = "Settings Error: Layout not found"
-                    }
+                android.widget.TextView(context).apply {
+                    text = "Settings Error: Layout not found"
                 }
             }
         }
@@ -68,30 +57,30 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         val view = inflater.inflate(layoutId, container, false)
 
         // Get drawable IDs
-        val outlineId = plugin.resources!!.getIdentifier(
+        val outlineId = resources.getIdentifier(
             "outline",
             "drawable",
-            csPackage
+            packageName
         )
-        val saveIconId = plugin.resources!!.getIdentifier(
+        val saveIconId = resources.getIdentifier(
             "save_icon",
             "drawable",
-            csPackage
+            packageName
         )
 
-        // Get view IDs  
-        val saveViewId = plugin.resources!!.getIdentifier("save", "id", csPackage)
-        val bypassBtnId = plugin.resources!!.getIdentifier("cf_bypass_btn", "id", csPackage)
-        val clearBtnId = plugin.resources!!.getIdentifier("cf_clear_btn", "id", csPackage)
+        // Get view IDs
+        val saveViewId = resources.getIdentifier("save", "id", packageName)
+        val bypassBtnId = resources.getIdentifier("cf_bypass_btn", "id", packageName)
+        val clearBtnId = resources.getIdentifier("cf_clear_btn", "id", packageName)
 
         // Save button
         if (saveViewId != 0) {
             val saveBtn = view.findViewById<ImageView>(saveViewId)
             if (saveIconId != 0) {
-                saveBtn?.setImageDrawable(plugin.resources!!.getDrawable(saveIconId, null))
+                saveBtn?.setImageDrawable(resources.getDrawable(saveIconId, null))
             }
             if (outlineId != 0) {
-                saveBtn?.background = plugin.resources!!.getDrawable(outlineId, null)
+                saveBtn?.background = resources.getDrawable(outlineId, null)
             }
             saveBtn?.setOnClickListener {
                 context?.let { ctx ->
@@ -126,7 +115,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
 
             // Update button label
             val cfCookies = MusicbdPlugin.cfCookies
-            bypassBtn.text = if (cfCookies.isNotBlank()) {
+            bypassBtn?.text = if (cfCookies.isNotBlank()) {
                 "✅ CF Cookies Saved"
             } else {
                 "🛡️ Bypass Cloudflare"
