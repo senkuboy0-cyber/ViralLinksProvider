@@ -3,11 +3,11 @@ package com.musicbd
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
+import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
 import com.lagradost.cloudstream3.mvvm.logError
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import android.webkit.CookieManager
 
 class MusicbdProvider : MainAPI() {
     override var mainUrl = "https://musicbd25.site"
@@ -29,43 +29,9 @@ class MusicbdProvider : MainAPI() {
         ".gif"
     )
 
-    // Get cookies from CookieManager
-    private fun getCookies(): Map<String, String> {
-        val cookies = mutableMapOf<String, String>()
-        try {
-            val cookieManager = CookieManager.getInstance()
-            val rawCookies = cookieManager.getCookie(mainUrl)
-            if (!rawCookies.isNullOrEmpty()) {
-                rawCookies.split(";").forEach { cookie ->
-                    val parts = cookie.trim().split("=", limit = 2)
-                    if (parts.size == 2) {
-                        cookies[parts[0].trim()] = parts[1].trim()
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            logError(e)
-        }
-        return cookies
-    }
-
-    // Get headers with cookies
-    private fun getHeadersWithCookies(): Map<String, String> {
-        val baseHeaders = mapOf(
-            "User-Agent" to defaultUserAgent,
-            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language" to "en-US,en;q=0.5",
-            "Connection" to "keep-alive",
-            "Upgrade-Insecure-Requests" to "1"
-        )
-        
-        val cookies = getCookies()
-        return if (cookies.isNotEmpty()) {
-            val cookieString = cookies.entries.joinToString("; ") { "${it.key}=${it.value}" }
-            baseHeaders + mapOf("Cookie" to cookieString)
-        } else {
-            baseHeaders
-        }
+    // Check if auto webview bypass is enabled
+    private fun isAutoWebviewEnabled(): Boolean {
+        return getKey<Boolean>("auto_webview_bypass") ?: true
     }
 
     private fun upgradeBloggerImageSize(url: String): String {
@@ -87,7 +53,7 @@ class MusicbdProvider : MainAPI() {
     private suspend fun fetchPoster(url: String): String {
         val defaultPoster = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhQvNXfZt7ctszD6Fy_FwU7NfcyxIEZ6uW6asTw_5cMPS38hkm65bQdzb2bCD-86XfOUVmp5xjOANaefT4ZdWSCf_picqYtsAN5McX_3gVEfdVa5EA4h9e2noiaNLwUhMK8VaGx1mQGI_7TCnpmEI3LxtgNPeVpKsojjSbqSZh50VbyrTiP7_2KOIusBBsC/s1024/1000073990.png"
         try {
-            val doc = app.get(url, headers = getHeadersWithCookies()).document
+            val doc = app.get(url, headers = ua).document
             
             val elements = ArrayList<org.jsoup.nodes.Element>()
             elements.addAll(doc.select("div.thumb img"))
@@ -106,6 +72,12 @@ class MusicbdProvider : MainAPI() {
         return defaultPoster
     }
 
+    private val ua = mapOf(
+        "User-Agent" to defaultUserAgent,
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language" to "en-US,en;q=0.5"
+    )
+
     override val mainPage = mainPageOf(
         "$mainUrl/" to "Latest",
         "$mainUrl/site-0.html" to "All Categories"
@@ -117,7 +89,7 @@ class MusicbdProvider : MainAPI() {
             listUrl = "${request.data}?to-page=$page"
         }
         
-        val listDoc = app.get(listUrl, headers = getHeadersWithCookies()).document
+        val listDoc = app.get(listUrl, headers = ua).document
 
         var linkElements = listDoc.select("div.catlistblock a[href*=/page-download/]")
         if (linkElements.isEmpty()) {
@@ -169,7 +141,7 @@ class MusicbdProvider : MainAPI() {
             url = "$mainUrl/site-1.html?to-search=$encoded&to-page=$page"
         }
         
-        val doc = app.get(url, headers = getHeadersWithCookies()).document
+        val doc = app.get(url, headers = ua).document
 
         var linkElements = doc.select("div.catlistblock a[href*=/page-download/]")
         if (linkElements.isEmpty()) {
@@ -215,7 +187,7 @@ class MusicbdProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url, headers = getHeadersWithCookies()).document
+        val doc = app.get(url, headers = ua).document
         doc.select("div.updates").remove()
 
         var title = ""
@@ -272,11 +244,11 @@ class MusicbdProvider : MainAPI() {
         }
 
         try {
-            val headers = getHeadersWithCookies() + mapOf(
+            val requestHeaders = ua + mapOf(
                 "Referer" to "$mainUrl/"
             )
 
-            val doc = app.get(data, headers = headers).document
+            val doc = app.get(data, headers = requestHeaders).document
 
             var finalUrl = ""
 
