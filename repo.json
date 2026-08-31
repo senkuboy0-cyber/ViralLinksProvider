@@ -1,0 +1,8 @@
+{
+  "name": "ViralLinksProvider",
+  "description": "ViralLinksProvider - CloudStream Extension",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/senkuboy0-cyber/ViralLinksProvider/builds/plugins.json"
+  ]
+}
