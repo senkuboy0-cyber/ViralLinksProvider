@@ -39,30 +39,47 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
     ): View? {
         val packageName = getPackageName()
         
-        val id = plugin.resources!!.getIdentifier(
+        val layoutId = plugin.resources!!.getIdentifier(
             "bottom_sheet_layout",
             "layout",
             packageName
         )
-        val layout = plugin.resources!!.getLayout(id)
-        val view = inflater.inflate(layout, container, false)
+        val view = inflater.inflate(layoutId, container, false)
 
+        // Get drawable IDs
         val outlineId = plugin.resources!!.getIdentifier(
             "outline",
             "drawable",
             packageName
         )
-
-        // Save button
         val saveIconId = plugin.resources!!.getIdentifier(
             "save_icon",
             "drawable",
             packageName
         )
-        val saveBtn = view.findViewById<ImageView>(saveIconId)
-        saveBtn.setImageDrawable(plugin.resources!!.getDrawable(saveIconId, null))
-        saveBtn.background = plugin.resources!!.getDrawable(outlineId, null)
-        saveBtn.setOnClickListener {
+
+        // Get view IDs
+        val saveViewId = plugin.resources!!.getIdentifier(
+            "save",
+            "id",
+            packageName
+        )
+        val bypassBtnId = plugin.resources!!.getIdentifier(
+            "cf_bypass_btn",
+            "id",
+            packageName
+        )
+        val clearBtnId = plugin.resources!!.getIdentifier(
+            "cf_clear_btn",
+            "id",
+            packageName
+        )
+
+        // Save button
+        val saveBtn = view.findViewById<ImageView>(saveViewId)
+        saveBtn?.setImageDrawable(plugin.resources!!.getDrawable(saveIconId, null))
+        saveBtn?.background = plugin.resources!!.getDrawable(outlineId, null)
+        saveBtn?.setOnClickListener {
             context?.let { ctx ->
                 AlertDialog.Builder(ctx)
                     .setTitle("Restart App?")
@@ -80,8 +97,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
 
         // ---- Cloudflare bypass button ----------------------------------------
-        val cfBypassBtnId = plugin.resources!!.getIdentifier("cf_bypass_btn", "id", packageName)
-        val bypassBtn = view.findViewById<Button>(cfBypassBtnId)
+        val bypassBtn = view.findViewById<Button>(bypassBtnId)
         bypassBtn.setOnClickListener {
             val dialog = CloudflareWebViewDialog(
                 targetUrl = "https://musicbd25.site",
@@ -101,8 +117,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
 
         // ---- Clear CF Cookies button -----------------------------------------
-        val cfClearBtnId = plugin.resources!!.getIdentifier("cf_clear_btn", "id", packageName)
-        val clearBtn = view.findViewById<Button>(cfClearBtnId)
+        val clearBtn = view.findViewById<Button>(clearBtnId)
         clearBtn.setOnClickListener {
             context?.let { ctx ->
                 AlertDialog.Builder(ctx)
