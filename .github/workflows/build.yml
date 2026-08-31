@@ -23,11 +23,14 @@ jobs:
       - name: Create Gradle Wrapper
         run: |
           mkdir -p gradle/wrapper
-          echo "Downloading Gradle wrapper jar..."
-          curl -sL "https://raw.githubusercontent.com/gradle/gradle/v9.6.0-milestone-3/gradle/wrapper/gradle-wrapper.jar" -o gradle/wrapper/gradle-wrapper.jar
-          if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ] || [ ! -s "gradle/wrapper/gradle-wrapper.jar" ]; then
-            curl -sL "https://github.com/gradle/gradle/raw/v9.6.0-milestone-3/gradle/wrapper/gradle-wrapper.jar" -o gradle/wrapper/gradle-wrapper.jar
-          fi
+          echo "distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-9.6.0-milestone-3-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists" > gradle/wrapper/gradle-wrapper.properties
+          curl -sL "https://github.com/gradle/gradle/raw/v9.6.0/gradle/wrapper/gradle-wrapper.jar" -o gradle/wrapper/gradle-wrapper.jar
           ls -la gradle/wrapper/
 
       - name: Make gradlew executable
@@ -35,11 +38,11 @@ jobs:
 
       - name: Build and Generate
         run: |
-          ./gradlew ViralLinksProvider:make
-          ./gradlew makePluginsJson
+          ./gradlew ViralLinksProvider:make --no-daemon
+          ./gradlew makePluginsJson --no-daemon
           mkdir -p build_output
           cp ViralLinksProvider/build/*.cs3 build_output/ || true
-          cp build/plugins.json build_output/plugins.json
+          cp build/plugins.json build_output/plugins.json || true
 
       - name: Deploy to builds branch
         uses: JamesIves/github-pages-deploy-action@v4
