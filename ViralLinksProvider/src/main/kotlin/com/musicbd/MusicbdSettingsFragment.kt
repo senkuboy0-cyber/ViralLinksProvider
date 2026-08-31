@@ -5,12 +5,14 @@ import android.app.Dialog
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -26,61 +28,69 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        // Use the plugin's class loader to get the correct package name
-        val pluginPackageName = plugin.javaClass.`package`.name
-        
-        // Use requireContext().resources for runtime resource access
-        val resources = requireContext().resources
-        val packageName = requireContext().packageName
-        
-        // Get layout ID
-        val layoutId = resources.getIdentifier(
-            "bottom_sheet_layout",
-            "layout",
-            packageName
+        // Try multiple package names for resources
+        val packageNames = listOf(
+            "com.musicbd",
+            plugin.javaClass.`package`.name,
+            requireContext().packageName
         )
         
+        var layoutId = 0
+        var foundPackage = ""
+        
+        for (pkg in packageNames) {
+            val id = plugin.resources?.getIdentifier(
+                "bottom_sheet_layout",
+                "layout",
+                pkg
+            ) ?: 0
+            Log.d("MusicbdSettings", "Trying package: $pkg, layoutId: $id")
+            if (id != 0) {
+                layoutId = id
+                foundPackage = pkg
+                break
+            }
+        }
+        
+        Log.d("MusicbdSettings", "Found package: $foundPackage, layoutId: $layoutId")
+        
         if (layoutId == 0) {
-            // Fallback: try direct R class
-            return try {
-                val rClass = Class.forName("$packageName.R\$layout")
-                val field = rClass.getField("bottom_sheet_layout")
-                val id = field.getInt(null)
-                inflater.inflate(id, container, false)
-            } catch (e: Exception) {
-                android.widget.TextView(context).apply {
-                    text = "Settings Error: Layout not found"
-                }
+            // Create a simple debug view
+            return TextView(context).apply {
+                text = "Error: Layout not found\n\nPackages tried: ${packageNames.joinToString()}\n\nPlugin class: ${plugin.javaClass.name}\nPlugin package: ${plugin.javaClass.`package`.name}"
+                setPadding(32, 32, 32, 32)
             }
         }
         
         val view = inflater.inflate(layoutId, container, false)
 
-        // Get drawable IDs
-        val outlineId = resources.getIdentifier(
-            "outline",
-            "drawable",
-            packageName
-        )
-        val saveIconId = resources.getIdentifier(
-            "save_icon",
-            "drawable",
-            packageName
-        )
+        // Get drawable IDs using found package
+        val outlineId = plugin.resources?.getIdentifier("outline", "drawable", foundPackage) ?: 0
+        val saveIconId = plugin.resources?.getIdentifier("save_icon", "drawable", foundPackage) ?: 0
 
         // Get view IDs
-        val saveViewId = resources.getIdentifier("save", "id", packageName)
-        val bypassBtnId = resources.getIdentifier("cf_bypass_btn", "id", packageName)
-        val clearBtnId = resources.getIdentifier("cf_clear_btn", "id", packageName)
+        val saveViewId = plugin.resources?.getIdentifier("save", "id", foundPackage) ?: 0
+        val bypassBtnId = plugin.resources?.getIdentifier("cf_bypass_btn", "id", foundPackage) ?: 0
+        val clearBtnId = plugin.resources?.getIdentifier("cf_clear_btn", "id", foundPackage) ?: 0
+
+        Log.d("MusicbdSettings", "IDs - outline: $outlineId, saveIcon: $saveIconId, saveView: $saveViewId, bypass: $bypassBtnId, clear: $clearBtnId")
 
         // Save button
         if (saveViewId != 0) {
             val saveBtn = view.findViewById<ImageView>(saveViewId)
             if (saveIconId != 0) {
-                saveBtn?.setImageDrawable(resources.getDrawable(saveIconId, null))
+                try {
+                    saveBtn?.setImageDrawable(plugin.resources?.getDrawable(saveIconId, null))
+                } catch (e: Exception) {
+                    Log.e("MusicbdSettings", "Error setting icon: ${e.message}")
+                }
             }
             if (outlineId != 0) {
-                saveBtn?.background = resources.getDrawable(outlineId, null)
+                try {
+                    saveBtn?.background = plugin.resources?.getDrawable(outlineId, null)
+                } catch (e: Exception) {
+                    Log.e("MusicbdSettings", "Error setting background: ${e.message}")
+                }
             }
             saveBtn?.setOnClickListener {
                 context?.let { ctx ->
