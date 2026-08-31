@@ -59,7 +59,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
             "drawable",
             packageName
         )
-        val saveBtn = view.findViewById<ImageView>(id = saveIconId)
+        val saveBtn = view.findViewById<ImageView>(saveIconId)
         saveBtn.setImageDrawable(plugin.resources!!.getDrawable(saveIconId, null))
         saveBtn.background = plugin.resources!!.getDrawable(outlineId, null)
         saveBtn.setOnClickListener {
