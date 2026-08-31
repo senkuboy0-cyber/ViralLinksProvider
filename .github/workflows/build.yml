@@ -20,29 +20,30 @@ jobs:
           java-version: "17"
           distribution: "temurin"
 
-      - name: Create Gradle Wrapper
+      - name: Download Gradle Wrapper JAR
         run: |
           mkdir -p gradle/wrapper
-          echo "distributionBase=GRADLE_USER_HOME
-distributionPath=wrapper/dists
-distributionUrl=https\://services.gradle.org/distributions/gradle-9.6.0-milestone-3-bin.zip
-networkTimeout=10000
-validateDistributionUrl=true
-zipStoreBase=GRADLE_USER_HOME
-zipStorePath=wrapper/dists" > gradle/wrapper/gradle-wrapper.properties
-          curl -sL "https://github.com/gradle/gradle/raw/v9.6.0/gradle/wrapper/gradle-wrapper.jar" -o gradle/wrapper/gradle-wrapper.jar
-          ls -la gradle/wrapper/
+          curl -fsSL -o gradle/wrapper/gradle-wrapper.jar \
+            "https://github.com/gradle/gradle/raw/v8.11.1/gradle/wrapper/gradle-wrapper.jar"
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
       - name: Build and Generate
         run: |
-          ./gradlew ViralLinksProvider:make --no-daemon
-          ./gradlew makePluginsJson --no-daemon
+          ./gradlew ViralLinksProvider:make
+          ./gradlew makePluginsJson
           mkdir -p build_output
           cp ViralLinksProvider/build/*.cs3 build_output/ || true
-          cp build/plugins.json build_output/plugins.json || true
+          cp build/plugins.json build_output/plugins.json
+          echo '{
+            "name": "ViralLinksProvider",
+            "description": "ViralLinksProvider - CloudStream Extension",
+            "manifestVersion": 1,
+            "pluginLists": [
+              "https://raw.githubusercontent.com/senkuboy0-cyber/ViralLinksProvider/builds/plugins.json"
+            ]
+          }' > build_output/repo.json
 
       - name: Deploy to builds branch
         uses: JamesIves/github-pages-deploy-action@v4
