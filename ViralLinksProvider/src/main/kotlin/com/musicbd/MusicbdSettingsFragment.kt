@@ -3,10 +3,8 @@ package com.musicbd
 import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -23,13 +21,14 @@ import com.lagradost.cloudstream3.plugins.Plugin
 
 class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFragment() {
 
+    private lateinit var bypassBtn: Button
+
     @SuppressLint("SetTextI18n")
     override fun onCreateView(
         inflater: android.view.LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        // Create programmatic UI
         val context = requireContext()
         
         val scrollView = ScrollView(context).apply {
@@ -104,7 +103,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         mainLayout.addView(descText)
         
         // Bypass Button
-        val bypassBtn = Button(context).apply {
+        bypassBtn = Button(context).apply {
             text = if (MusicbdPlugin.cfCookies.isNotBlank()) {
                 "✅ CF Cookies Saved"
             } else {
@@ -139,29 +138,27 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
             ).apply {
                 bottomMargin = dpToPx(16)
             }
-            setOnClickListener {
-                context?.let { ctx ->
-                    AlertDialog.Builder(ctx)
-                        .setTitle("Clear CF Cookies?")
-                        .setMessage("This will remove saved cookies. You will need to bypass again.")
-                        .setPositiveButton("Clear") { _, _ ->
-                            val host = MusicbdPlugin.cfCookieHost
-                            if (host.isNotBlank()) {
-                                val cm = CookieManager.getInstance()
-                                listOf("cf_clearance", "__ddg1_", "__ddg2_", "__cfruid").forEach { name ->
-                                    cm.setCookie(host, "$name=; Max-Age=0")
-                                }
-                                cm.flush()
+            setOnClickListener { ctx ->
+                AlertDialog.Builder(ctx)
+                    .setTitle("Clear CF Cookies?")
+                    .setMessage("This will remove saved cookies. You will need to bypass again.")
+                    .setPositiveButton("Clear") { _, _ ->
+                        val host = MusicbdPlugin.cfCookieHost
+                        if (host.isNotBlank()) {
+                            val cm = CookieManager.getInstance()
+                            listOf("cf_clearance", "__ddg1_", "__ddg2_", "__cfruid").forEach { name ->
+                                cm.setCookie(host, "$name=; Max-Age=0")
                             }
-                            MusicbdPlugin.cfCookies = ""
-                            MusicbdPlugin.cfUserAgent = ""
-                            MusicbdPlugin.cfCookieHost = ""
-                            bypassBtn.text = "🛡️ Bypass Cloudflare"
-                            Toast.makeText(ctx, "✅ CF Cookies cleared", Toast.LENGTH_SHORT).show()
+                            cm.flush()
                         }
-                        .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
-                        .show()
-                }
+                        MusicbdPlugin.cfCookies = ""
+                        MusicbdPlugin.cfUserAgent = ""
+                        MusicbdPlugin.cfCookieHost = ""
+                        bypassBtn.text = "🛡️ Bypass Cloudflare"
+                        Toast.makeText(ctx, "✅ CF Cookies cleared", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
+                    .show()
             }
         }
         mainLayout.addView(clearBtn)
