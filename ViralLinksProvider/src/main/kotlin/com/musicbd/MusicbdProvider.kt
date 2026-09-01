@@ -122,13 +122,22 @@ class MusicbdProvider : MainAPI() {
             var rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
             
             if (isCloudflareBlocked(rawResponse)) {
-                if (isAutoWebviewEnabled() && MusicbdPlugin.cfCookies.isBlank()) {
+                if (isAutoWebviewEnabled()) {
                     cfMutex.withLock {
+                        // Double-check inside the lock. Another parallel request might have already solved the bypass.
                         var checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
                         
-                        if (isCloudflareBlocked(checkResp) && MusicbdPlugin.cfCookies.isBlank()) {
+                        if (isCloudflareBlocked(checkResp)) {
+                            // Cookies are either empty or expired. Clear all old cookies automatically.
+                            MusicbdPlugin.cfCookies = ""
+                            val cookieManager = android.webkit.CookieManager.getInstance()
+                            cookieManager.removeAllCookies(null)
+                            cookieManager.flush()
+                            
+                            // Open WebView only once to get fresh cookies
                             val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
                             if (success) {
+                                // Retry the request with the newly fetched cookies
                                 checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
                             }
                         }
