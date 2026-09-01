@@ -198,6 +198,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                         
                         val cm = CookieManager.getInstance()
                         val url = "https://musicbd25.site"
+                        val domain = "musicbd25.site"
                         
                         val cookieString = cm.getCookie(url)
                         if (cookieString != null) {
@@ -205,6 +206,8 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                             for (cookie in cookies) {
                                 val cookieName = cookie.substringBefore("=").trim()
                                 if (cookieName.isNotBlank()) {
+                                    cm.setCookie(domain, "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
+                                    cm.setCookie(".$domain", "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
                                     cm.setCookie(url, "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
                                 }
                             }
@@ -216,7 +219,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                         MusicbdPlugin.cfCookieHost = ""
                         
                         bypassBtn.text = "🛡️ Bypass Protection"
-                        Toast.makeText(ctx, "Cookies cleared completely", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(ctx, "All Cookies cleared completely", Toast.LENGTH_SHORT).show()
                     }
                     .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
                     .show()
