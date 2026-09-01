@@ -1,13 +1,72 @@
 package com.musicbd
 
+import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
 import com.lagradost.cloudstream3.mvvm.logError
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import okhttp3.Interceptor
+import okhttp3.Response
+import kotlin.coroutines.resume
+
+object MusicbdCFBypassInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val original = chain.request()
+        val builder = original.newBuilder()
+            .removeHeader("X-Requested-With")
+            .header("sec-ch-ua-mobile", "?1")
+            .header("sec-ch-ua-platform", "\"Android\"")
+
+        val savedUa = MusicbdPlugin.cfUserAgent
+        if (savedUa.isNotEmpty()) {
+            builder.header("User-Agent", savedUa)
+        }
+
+        val savedCookies = MusicbdPlugin.cfCookies
+        if (savedCookies.isNotEmpty()) {
+            val existingCookie = original.header("Cookie") ?: ""
+            val base = existingCookie.split(";").map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("cf_clearance=") }
+            val fresh = savedCookies.split(";").map { it.trim() }.filter { it.isNotEmpty() }
+            builder.header("Cookie", (base + fresh).distinct().joinToString("; "))
+        }
+
+        return chain.proceed(builder.build())
+    }
+}
+
+suspend fun showMusicbdCFBypassDialogAndWait(url: String): Boolean =
+    withContext(Dispatchers.Main) {
+        suspendCancellableCoroutine { cont ->
+            val activity = CommonActivity.activity as? AppCompatActivity
+            if (activity == null || activity.isFinishing || activity.isDestroyed) {
+                cont.resume(false)
+                return@suspendCancellableCoroutine
+            }
+            var resumed = false
+            fun safeResume(success: Boolean) {
+                if (!resumed) { 
+                    resumed = true
+                    cont.resume(success) 
+                }
+            }
+            val dialog = CloudflareWebViewDialog(
+                targetUrl = url,
+                onFinished = { success -> safeResume(success) }
+            )
+            cont.invokeOnCancellation {
+                activity.runOnUiThread { runCatching { dialog.dismissAllowingStateLoss() } }
+            }
+            dialog.show(activity.supportFragmentManager, "musicbd_cf_bypass_auto")
+        }
+    }
 
 class MusicbdProvider : MainAPI() {
     override var mainUrl = "https://musicbd25.site"
@@ -29,7 +88,42 @@ class MusicbdProvider : MainAPI() {
         ".gif"
     )
 
-    // Check if auto webview bypass is enabled
+    private val ua = mapOf(
+        "User-Agent" to defaultUserAgent,
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language" to "en-US,en;q=0.5"
+    )
+
+    companion object {
+        private val CF_BLOCKER_PHRASES = listOf(
+            "just a moment",
+            "checking your browser",
+            "ddos-guard",
+            "attention required",
+            "verify you are human",
+            "cloudflare"
+        )
+
+        fun isCloudflareBlocked(response: com.lagradost.nicehttp.NiceResponse): Boolean {
+            if (response.code == 403 || response.code == 503) return true
+            return CF_BLOCKER_PHRASES.any { response.text.lowercase().contains(it) }
+        }
+
+        suspend fun appGet(
+            url: String,
+            headers: Map<String, String> = emptyMap()
+        ): com.lagradost.nicehttp.NiceResponse {
+            val rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+            
+            return if (isCloudflareBlocked(rawResponse)) {
+                showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
+                app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+            } else {
+                rawResponse
+            }
+        }
+    }
+
     private fun isAutoWebviewEnabled(): Boolean {
         return getKey<Boolean>("auto_webview_bypass") ?: true
     }
@@ -53,7 +147,7 @@ class MusicbdProvider : MainAPI() {
     private suspend fun fetchPoster(url: String): String {
         val defaultPoster = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhQvNXfZt7ctszD6Fy_FwU7NfcyxIEZ6uW6asTw_5cMPS38hkm65bQdzb2bCD-86XfOUVmp5xjOANaefT4ZdWSCf_picqYtsAN5McX_3gVEfdVa5EA4h9e2noiaNLwUhMK8VaGx1mQGI_7TCnpmEI3LxtgNPeVpKsojjSbqSZh50VbyrTiP7_2KOIusBBsC/s1024/1000073990.png"
         try {
-            val doc = app.get(url, headers = ua).document
+            val doc = appGet(url, headers = ua).document
             
             val elements = ArrayList<org.jsoup.nodes.Element>()
             elements.addAll(doc.select("div.thumb img"))
@@ -72,12 +166,6 @@ class MusicbdProvider : MainAPI() {
         return defaultPoster
     }
 
-    private val ua = mapOf(
-        "User-Agent" to defaultUserAgent,
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language" to "en-US,en;q=0.5"
-    )
-
     override val mainPage = mainPageOf(
         "$mainUrl/" to "Latest",
         "$mainUrl/site-0.html" to "All Categories"
@@ -89,7 +177,7 @@ class MusicbdProvider : MainAPI() {
             listUrl = "${request.data}?to-page=$page"
         }
         
-        val listDoc = app.get(listUrl, headers = ua).document
+        val listDoc = appGet(listUrl, headers = ua).document
 
         var linkElements = listDoc.select("div.catlistblock a[href*=/page-download/]")
         if (linkElements.isEmpty()) {
@@ -141,7 +229,7 @@ class MusicbdProvider : MainAPI() {
             url = "$mainUrl/site-1.html?to-search=$encoded&to-page=$page"
         }
         
-        val doc = app.get(url, headers = ua).document
+        val doc = appGet(url, headers = ua).document
 
         var linkElements = doc.select("div.catlistblock a[href*=/page-download/]")
         if (linkElements.isEmpty()) {
@@ -187,7 +275,7 @@ class MusicbdProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url, headers = ua).document
+        val doc = appGet(url, headers = ua).document
         doc.select("div.updates").remove()
 
         var title = ""
@@ -248,7 +336,7 @@ class MusicbdProvider : MainAPI() {
                 "Referer" to "$mainUrl/"
             )
 
-            val doc = app.get(data, headers = requestHeaders).document
+            val doc = appGet(data, headers = requestHeaders).document
 
             var finalUrl = ""
 
