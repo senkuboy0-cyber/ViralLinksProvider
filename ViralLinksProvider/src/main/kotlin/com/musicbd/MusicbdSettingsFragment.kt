@@ -3,6 +3,7 @@ package com.musicbd
 import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Bundle
@@ -59,7 +60,6 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
             gravity = Gravity.TOP
         }
 
-        // Header Layout for Title and Save Button
         val headerLayout = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
@@ -69,7 +69,6 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
             gravity = Gravity.CENTER_VERTICAL
         }
         
-        // Title text with weight to push the save button to the right end
         val title = TextView(ctx).apply {
             text = "Musicbd25 Settings"
             textSize = 20f
@@ -82,7 +81,6 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
         headerLayout.addView(title)
 
-        // Save Button Icon
         val saveBtn = ImageView(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24))
             
@@ -94,15 +92,24 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
             }
             
             setOnClickListener {
-                Toast.makeText(ctx, "Settings Saved", Toast.LENGTH_SHORT).show()
-                dismiss()
+                AlertDialog.Builder(ctx)
+                    .setTitle("Restart App?")
+                    .setMessage("Save changes and restart the app?")
+                    .setPositiveButton("Yes") { _, _ ->
+                        restartApp(ctx)
+                    }
+                    .setNegativeButton("No") { dialog, _ ->
+                        dialog.dismiss()
+                        Toast.makeText(ctx, "Changes saved", Toast.LENGTH_SHORT).show()
+                        dismiss()
+                    }
+                    .show()
             }
         }
         headerLayout.addView(saveBtn)
         
         mainLayout.addView(headerLayout)
         
-        // Divider
         val divider = View(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -112,7 +119,6 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
         mainLayout.addView(divider)
         
-        // Section Title
         val sectionTitle = TextView(ctx).apply {
             text = "Cloudflare Protection"
             textSize = 17f
@@ -121,7 +127,6 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
         mainLayout.addView(sectionTitle)
         
-        // Description
         val descText = TextView(ctx).apply {
             text = "If Musicbd25 shows challenge screen, use WebView to bypass."
             textSize = 13f
@@ -130,7 +135,6 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
         mainLayout.addView(descText)
         
-        // Bypass Button
         bypassBtn = Button(ctx).apply {
             text = if (MusicbdPlugin.cfCookies.isNotBlank()) {
                 "✅ CF Cookies Saved"
@@ -156,7 +160,6 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
         mainLayout.addView(bypassBtn)
         
-        // Clear Cookies Button
         val clearBtn = Button(ctx).apply {
             text = "Clear CF Cookies"
             layoutParams = LinearLayout.LayoutParams(
@@ -201,5 +204,17 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
     private fun dpToPx(dp: Int): Int {
         val scale = ctx.resources.displayMetrics.density
         return (dp * scale + 0.5f).toInt()
+    }
+
+    private fun restartApp(context: Context) {
+        val packageManager = context.packageManager
+        val intent = packageManager.getLaunchIntentForPackage(context.packageName)
+        val componentName = intent?.component
+
+        if (componentName != null) {
+            val restartIntent = Intent.makeRestartActivityTask(componentName)
+            context.startActivity(restartIntent)
+            Runtime.getRuntime().exit(0)
+        }
     }
 }
