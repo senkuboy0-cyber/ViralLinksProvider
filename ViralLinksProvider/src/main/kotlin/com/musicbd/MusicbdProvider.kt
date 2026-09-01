@@ -5,12 +5,13 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
-import com.lagradost.cloudstream3.mvvm.logError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -95,6 +96,8 @@ class MusicbdProvider : MainAPI() {
     )
 
     companion object {
+        private val cfMutex = Mutex()
+        
         private val CF_BLOCKER_PHRASES = listOf(
             "just a moment",
             "checking your browser",
@@ -113,14 +116,18 @@ class MusicbdProvider : MainAPI() {
             url: String,
             headers: Map<String, String> = emptyMap()
         ): com.lagradost.nicehttp.NiceResponse {
-            val rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+            var rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
             
-            return if (isCloudflareBlocked(rawResponse)) {
-                showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
-                app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
-            } else {
-                rawResponse
+            if (isCloudflareBlocked(rawResponse)) {
+                cfMutex.withLock {
+                    rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                    if (isCloudflareBlocked(rawResponse)) {
+                        showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
+                        rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                    }
+                }
             }
+            return rawResponse
         }
     }
 
@@ -133,13 +140,9 @@ class MusicbdProvider : MainAPI() {
     }
 
     private fun isValidPoster(src: String): Boolean {
-        if (src.isBlank()) {
-            return false
-        }
+        if (src.isBlank()) return false
         for (excluded in excludedSrcs) {
-            if (src.contains(excluded)) {
-                return false
-            }
+            if (src.contains(excluded)) return false
         }
         return true
     }
@@ -327,17 +330,10 @@ class MusicbdProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        if (data.isBlank() || !data.contains("filedownload")) {
-            return false
-        }
-
+        if (data.isBlank() || !data.contains("filedownload")) return false
         try {
-            val requestHeaders = ua + mapOf(
-                "Referer" to "$mainUrl/"
-            )
-
+            val requestHeaders = ua + mapOf("Referer" to "$mainUrl/")
             val doc = appGet(data, headers = requestHeaders).document
-
             var finalUrl = ""
 
             val link1 = doc.selectFirst("a[href$=.mp4]")
@@ -356,7 +352,6 @@ class MusicbdProvider : MainAPI() {
             }
 
             finalUrl = finalUrl.trim()
-
             if (finalUrl.isNotEmpty()) {
                 var normalized = finalUrl
                 if (normalized.startsWith("//")) {
@@ -381,7 +376,6 @@ class MusicbdProvider : MainAPI() {
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        
         return false
     }
 }
