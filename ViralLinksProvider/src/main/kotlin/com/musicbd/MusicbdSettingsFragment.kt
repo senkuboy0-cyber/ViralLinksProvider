@@ -150,9 +150,9 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         switchLayout.addView(switchTitle)
 
         val autoBypassSwitch = Switch(ctx).apply {
-            isChecked = getKey("auto_webview_bypass") ?: true
+            isChecked = getKey("musicbd_auto_bypass_v2") ?: true
             setOnCheckedChangeListener { _, isChecked ->
-                setKey("auto_webview_bypass", isChecked)
+                setKey("musicbd_auto_bypass_v2", isChecked)
             }
         }
         switchLayout.addView(autoBypassSwitch)
@@ -193,7 +193,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
             setOnClickListener {
                 AlertDialog.Builder(ctx)
                     .setTitle("Clear Cookies?")
-                    .setMessage("This will remove saved cookies. You need to bypass again.")
+                    .setMessage("This will remove all saved cookies. You need to bypass again.")
                     .setPositiveButton("Clear") { _, _ ->
                         
                         val cm = CookieManager.getInstance()
@@ -206,9 +206,9 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                             for (cookie in cookies) {
                                 val cookieName = cookie.substringBefore("=").trim()
                                 if (cookieName.isNotBlank()) {
-                                    cm.setCookie(domain, "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
-                                    cm.setCookie(".$domain", "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
-                                    cm.setCookie(url, "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
+                                    cm.setCookie(url, "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; domain=$domain; path=/")
+                                    cm.setCookie(url, "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; domain=.$domain; path=/")
+                                    cm.setCookie(url, "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/")
                                 }
                             }
                         }
