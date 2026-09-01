@@ -24,6 +24,7 @@ import com.lagradost.cloudstream3.plugins.Plugin
 class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFragment() {
 
     private lateinit var bypassBtn: Button
+    private lateinit var ctx: Context
 
     @SuppressLint("SetTextI18n")
     override fun onCreateView(
@@ -31,17 +32,16 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        val context = requireContext()
-        val screenW = context.resources.displayMetrics.widthPixels
+        ctx = requireContext()
         
-        val scrollView = ScrollView(context).apply {
+        val scrollView = ScrollView(ctx).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
         
-        val mainLayout = LinearLayout(context).apply {
+        val mainLayout = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16))
             layoutParams = LinearLayout.LayoutParams(
@@ -52,7 +52,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
         
         // Title
-        val title = TextView(context).apply {
+        val title = TextView(ctx).apply {
             text = "Musicbd25 Settings"
             textSize = 20f
             setTextColor(Color.WHITE)
@@ -61,7 +61,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         mainLayout.addView(title)
         
         // Divider
-        val divider = View(context).apply {
+        val divider = View(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dpToPx(1)
@@ -70,8 +70,8 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
         mainLayout.addView(divider)
         
-        // Section: Cloudflare
-        val sectionTitle = TextView(context).apply {
+        // Section Title
+        val sectionTitle = TextView(ctx).apply {
             text = "Cloudflare Protection"
             textSize = 17f
             setTextColor(Color.WHITE)
@@ -79,7 +79,8 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
         mainLayout.addView(sectionTitle)
         
-        val descText = TextView(context).apply {
+        // Description
+        val descText = TextView(ctx).apply {
             text = "If Musicbd25 shows challenge screen, use WebView to bypass."
             textSize = 13f
             setTextColor(Color.parseColor("#888888"))
@@ -88,7 +89,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         mainLayout.addView(descText)
         
         // Bypass Button
-        bypassBtn = Button(context).apply {
+        bypassBtn = Button(ctx).apply {
             text = if (MusicbdPlugin.cfCookies.isNotBlank()) {
                 "✅ CF Cookies Saved"
             } else {
@@ -113,13 +114,13 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         mainLayout.addView(bypassBtn)
         
         // Clear Button
-        val clearBtn = Button(context).apply {
+        val clearBtn = Button(ctx).apply {
             text = "Clear CF Cookies"
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dpToPx(16) }
-            setOnClickListener { ctx ->
+            setOnClickListener {
                 AlertDialog.Builder(ctx)
                     .setTitle("Clear CF Cookies?")
                     .setMessage("This will remove saved cookies. You need to bypass again.")
@@ -155,7 +156,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
     }
     
     private fun dpToPx(dp: Int): Int {
-        val scale = context?.resources?.displayMetrics?.density ?: 1f
+        val scale = ctx.resources.displayMetrics.density
         return (dp * scale + 0.5f).toInt()
     }
 }
