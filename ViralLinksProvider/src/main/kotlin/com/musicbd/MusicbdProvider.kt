@@ -119,30 +119,54 @@ class MusicbdProvider : MainAPI() {
             url: String,
             headers: Map<String, String> = emptyMap()
         ): com.lagradost.nicehttp.NiceResponse {
+            val siteUrl = "https://musicbd25.site"
+            
             if (MusicbdPlugin.cfCookies.isEmpty() && isAutoWebviewEnabled()) {
                 cfMutex.withLock {
                     if (MusicbdPlugin.cfCookies.isEmpty()) {
-                        showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
+                        val success = showMusicbdCFBypassDialogAndWait(siteUrl)
+                        if (success) {
+                            val cookieManager = android.webkit.CookieManager.getInstance()
+                            MusicbdPlugin.cfCookies = cookieManager.getCookie(siteUrl) ?: ""
+                            
+                            val webViewUa = CommonActivity.activity?.let { 
+                                android.webkit.WebSettings.getDefaultUserAgent(it) 
+                            }
+                            if (webViewUa != null) {
+                                MusicbdPlugin.cfUserAgent = webViewUa
+                            }
+                        }
                     }
                 }
             }
 
-            var rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+            val requestHeaders = headers.toMutableMap()
+            if (MusicbdPlugin.cfUserAgent.isNotEmpty()) {
+                requestHeaders["User-Agent"] = MusicbdPlugin.cfUserAgent
+            }
+
+            var rawResponse = app.get(url, headers = requestHeaders, interceptor = MusicbdCFBypassInterceptor)
             
             if (isCloudflareBlocked(rawResponse)) {
                 if (isAutoWebviewEnabled()) {
                     cfMutex.withLock {
-                        var checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                        var checkResp = app.get(url, headers = requestHeaders, interceptor = MusicbdCFBypassInterceptor)
                         
                         if (isCloudflareBlocked(checkResp)) {
-                            MusicbdPlugin.cfCookies = ""
-                            val cookieManager = android.webkit.CookieManager.getInstance()
-                            cookieManager.removeAllCookies(null)
-                            cookieManager.flush()
-                            
-                            val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
+                            val success = showMusicbdCFBypassDialogAndWait(siteUrl)
                             if (success) {
-                                checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                                val cookieManager = android.webkit.CookieManager.getInstance()
+                                MusicbdPlugin.cfCookies = cookieManager.getCookie(siteUrl) ?: ""
+                                
+                                val webViewUa = CommonActivity.activity?.let { 
+                                    android.webkit.WebSettings.getDefaultUserAgent(it) 
+                                }
+                                if (webViewUa != null) {
+                                    MusicbdPlugin.cfUserAgent = webViewUa
+                                    requestHeaders["User-Agent"] = webViewUa
+                                }
+                                
+                                checkResp = app.get(url, headers = requestHeaders, interceptor = MusicbdCFBypassInterceptor)
                             }
                         }
                         rawResponse = checkResp
