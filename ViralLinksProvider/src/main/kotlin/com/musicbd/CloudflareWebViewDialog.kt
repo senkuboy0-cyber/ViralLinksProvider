@@ -166,11 +166,6 @@ class CloudflareWebViewDialog(
             textSize = 11f
             setTextColor(Color.parseColor("#707080"))
             setPadding(0, 0, 0, 12)
-        }
-        root.addView(TextView(requireContext()).apply {
-            text = ""
-            textSize = 0f
-            setPadding(0, 0, 0, 0)
         })
 
         progressBar = ProgressBar(
