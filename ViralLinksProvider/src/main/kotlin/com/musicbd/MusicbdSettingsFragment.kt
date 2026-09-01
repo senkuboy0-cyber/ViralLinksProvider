@@ -15,6 +15,7 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -23,6 +24,8 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.lagradost.cloudstream3.plugins.Plugin
+import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
+import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
 
 class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFragment() {
 
@@ -73,11 +76,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
             text = "Musicbd25 Settings"
             textSize = 20f
             setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f 
-            )
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         headerLayout.addView(title)
 
@@ -111,10 +110,8 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         mainLayout.addView(headerLayout)
         
         val divider = View(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(1)
-            ).apply { bottomMargin = dpToPx(12) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(1))
+                .apply { bottomMargin = dpToPx(12) }
             setBackgroundColor(Color.parseColor("#333333"))
         }
         mainLayout.addView(divider)
@@ -128,16 +125,44 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         mainLayout.addView(sectionTitle)
         
         val descText = TextView(ctx).apply {
-            text = "If Musicbd25 shows challenge screen, use WebView to bypass."
+            text = "If Musicbd25 shows a \"Just a moment\" screen, tap below to open a WebView and solve the challenge. Cookies will be saved automatically."
             textSize = 13f
             setTextColor(Color.parseColor("#888888"))
             setPadding(0, 0, 0, dpToPx(12))
         }
         mainLayout.addView(descText)
+
+        // Auto WebView Bypass Switch
+        val switchLayout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dpToPx(16) }
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val switchTitle = TextView(ctx).apply {
+            text = "Auto WebView Bypass"
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        switchLayout.addView(switchTitle)
+
+        val autoBypassSwitch = Switch(ctx).apply {
+            isChecked = getKey("auto_webview_bypass") ?: true
+            setOnCheckedChangeListener { _, isChecked ->
+                setKey("auto_webview_bypass", isChecked)
+            }
+        }
+        switchLayout.addView(autoBypassSwitch)
+        
+        mainLayout.addView(switchLayout)
         
         bypassBtn = Button(ctx).apply {
             text = if (MusicbdPlugin.cfCookies.isNotBlank()) {
-                "✅ CF Cookies Saved"
+                "✅ CF Cookies Saved - Refresh"
             } else {
                 "🛡️ Bypass Cloudflare"
             }
@@ -150,7 +175,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                     targetUrl = "https://musicbd25.site",
                     onFinished = { saved ->
                         if (saved) {
-                            bypassBtn.text = "✅ CF Cookies Saved"
+                            bypassBtn.text = "✅ CF Cookies Saved - Refresh"
                             Toast.makeText(ctx, "Done! Cookies saved", Toast.LENGTH_SHORT).show()
                         }
                     }
@@ -173,11 +198,18 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                     .setPositiveButton("Clear") { _, _ ->
                         
                         val cm = CookieManager.getInstance()
+                        val url = "https://musicbd25.site"
                         val domain = "musicbd25.site"
                         
-                        listOf("cf_clearance", "__ddg1_", "__ddg2_", "__cfruid").forEach { name ->
-                            cm.setCookie(domain, "$name=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
-                            cm.setCookie(".$domain", "$name=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
+                        val cookieString = cm.getCookie(url)
+                        if (cookieString != null) {
+                            val cookies = cookieString.split(";")
+                            for (cookie in cookies) {
+                                val cookieName = cookie.substringBefore("=").trim()
+                                cm.setCookie(domain, "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
+                                cm.setCookie(".$domain", "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
+                                cm.setCookie(url, "$cookieName=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
+                            }
                         }
                         cm.flush()
                         
@@ -186,7 +218,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                         MusicbdPlugin.cfCookieHost = ""
                         
                         bypassBtn.text = "🛡️ Bypass Cloudflare"
-                        Toast.makeText(ctx, "CF Cookies cleared", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(ctx, "All Cookies cleared completely", Toast.LENGTH_SHORT).show()
                     }
                     .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
                     .show()
