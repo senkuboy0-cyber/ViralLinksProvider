@@ -30,7 +30,7 @@ class CloudflareWebViewDialog(
 
     companion object {
         private const val TAG = "Musicbd_CFWebViewDialog"
-        private const val POLL_INTERVAL_MS = 1_000L
+        private const val POLL_INTERVAL_MS = 1_500L
         private const val POLL_TIMEOUT_MS = 60_000L
 
         private val CHALLENGE_TITLES = listOf(
@@ -53,35 +53,30 @@ class CloudflareWebViewDialog(
     private var cookiesSaved = false
     private var pollElapsedMs = 0L
 
-    private val targetHost: String by lazy {
-        try {
-            val uri = android.net.Uri.parse(targetUrl)
-            "${uri.scheme}://${uri.host}"
-        } catch (_: Exception) {
-            targetUrl
-        }
-    }
-
     private val cookiePollRunnable = object : Runnable {
         override fun run() {
             if (cookiesSaved || !isAdded) return
 
             CookieManager.getInstance().flush()
-            val cookieStr = CookieManager.getInstance().getCookie(targetHost) ?: ""
-            val title = webView?.title ?: ""
+            val cookieStr = CookieManager.getInstance().getCookie(targetUrl) ?: ""
+            val title = webView?.title?.lowercase() ?: ""
 
             Log.d(TAG, "Poll [$pollElapsedMs ms] Title: '$title' | Cookies: $cookieStr")
 
-            if (cookieStr.isNotBlank() && !isChallengeTitle(title) && !title.equals("about:blank", ignoreCase = true) && title.isNotBlank()) {
+            val hasCookies = cookieStr.isNotBlank()
+            val isChallenge = isChallengeTitle(title)
+            val isValidPage = title.isNotBlank() && title != "about:blank"
+
+            if (hasCookies && !isChallenge && isValidPage) {
                 saveCookiesAndDismiss(cookieStr)
                 return
             }
 
             if (pollElapsedMs >= POLL_TIMEOUT_MS) {
-                if (cookieStr.isNotBlank()) {
+                if (hasCookies) {
                     saveCookiesAndDismiss(cookieStr)
                 } else {
-                    updateStatus("Timed out. Try again.")
+                    updateStatus("Timed out. Please try again.")
                 }
             } else {
                 scheduleNextPoll()
@@ -146,7 +141,7 @@ class CloudflareWebViewDialog(
         }
 
         root.addView(TextView(requireContext()).apply {
-            text = "Protection Bypass"
+            text = "🛡️ Protection Bypass"
             textSize = 18f
             setTextColor(Color.WHITE)
             setPadding(0, 0, 0, 8)
@@ -238,26 +233,6 @@ class CloudflareWebViewDialog(
             override fun shouldOverrideUrlLoading(
                 view: WebView?, request: WebResourceRequest?
             ): Boolean = false
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                if (cookiesSaved) return
-
-                val title = view?.title ?: ""
-                Log.d(TAG, "onPageFinished title='$title' url=$url")
-
-                if (!isChallengeTitle(title) && !title.equals("about:blank", ignoreCase = true) && title.isNotBlank()) {
-                    CookieManager.getInstance().flush()
-                    val cookieStr = CookieManager.getInstance().getCookie(targetHost) 
-                        ?: CookieManager.getInstance().getCookie(url ?: targetHost) 
-                        ?: ""
-
-                    if (cookieStr.isNotBlank()) {
-                        handler.removeCallbacks(cookiePollRunnable)
-                        saveCookiesAndDismiss(cookieStr)
-                    }
-                }
-            }
         }
 
         return wv
@@ -270,13 +245,13 @@ class CloudflareWebViewDialog(
         handler.removeCallbacks(cookiePollRunnable)
 
         MusicbdPlugin.cfCookies = cookieStr
-        MusicbdPlugin.cfCookieHost = targetHost
+        MusicbdPlugin.cfCookieHost = "musicbd25.site"
         webView?.settings?.userAgentString?.let { ua ->
             MusicbdPlugin.cfUserAgent = ua
         }
 
         Log.d(TAG, "Saved all cookies: $cookieStr")
-        updateStatus("Done! All cookies saved.")
+        updateStatus("✅ Done! All cookies saved.")
 
         webView?.postDelayed({
             if (isAdded) {
@@ -297,7 +272,7 @@ class CloudflareWebViewDialog(
     private fun updateStatus(msg: String) {
         activity?.runOnUiThread {
             statusText?.text = msg
-            if (msg.startsWith("Done")) {
+            if (msg.startsWith("✅")) {
                 progressBar?.visibility = View.GONE
                 statusText?.setTextColor(Color.parseColor("#4CAF50"))
             } else {
