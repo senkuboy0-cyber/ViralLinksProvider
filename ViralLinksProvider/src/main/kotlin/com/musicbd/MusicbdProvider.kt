@@ -122,10 +122,11 @@ class MusicbdProvider : MainAPI() {
             var rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
             
             if (isCloudflareBlocked(rawResponse)) {
-                if (isAutoWebviewEnabled()) {
+                if (isAutoWebviewEnabled() && MusicbdPlugin.cfCookies.isBlank()) {
                     cfMutex.withLock {
                         var checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
-                        if (isCloudflareBlocked(checkResp)) {
+                        
+                        if (isCloudflareBlocked(checkResp) && MusicbdPlugin.cfCookies.isBlank()) {
                             val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
                             if (success) {
                                 checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
