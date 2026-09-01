@@ -112,7 +112,7 @@ class MusicbdProvider : MainAPI() {
         }
         
         fun isAutoWebviewEnabled(): Boolean {
-            return getKey<Boolean>("auto_webview_bypass") ?: true
+            return getKey<Boolean>("musicbd_auto_bypass_v2") ?: true
         }
 
         suspend fun appGet(
