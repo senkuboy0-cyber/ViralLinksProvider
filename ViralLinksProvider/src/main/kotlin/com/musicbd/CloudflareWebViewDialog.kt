@@ -18,6 +18,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.lagradost.api.Log
 
@@ -28,12 +30,11 @@ class CloudflareWebViewDialog(
 
     companion object {
         private const val TAG = "Musicbd_CFWebViewDialog"
-        private const val POLL_INTERVAL_MS = 2_000L
-        private const val POLL_TIMEOUT_MS = 120_000L
+        private const val POLL_INTERVAL_MS = 1_000L
+        private const val POLL_TIMEOUT_MS = 60_000L
 
         private val CHALLENGE_TITLES = listOf(
             "just a moment",
-            "just a moment...",
             "checking your browser",
             "attention required",
             "ddos-guard",
@@ -67,38 +68,36 @@ class CloudflareWebViewDialog(
 
             CookieManager.getInstance().flush()
             val cookieStr = CookieManager.getInstance().getCookie(targetHost) ?: ""
-            Log.d(TAG, "Poll [$pollElapsedMs ms] cookies for $targetHost")
+            val title = webView?.title ?: ""
 
-            when {
-                cookieStr.contains("cf_clearance") -> {
+            Log.d(TAG, "Poll [$pollElapsedMs ms] Title: '$title' | Cookies: $cookieStr")
+
+            if (cookieStr.isNotBlank() && !isChallengeTitle(title) && !title.equals("about:blank", ignoreCase = true) && title.isNotBlank()) {
+                saveCookiesAndDismiss(cookieStr)
+                return
+            }
+
+            if (pollElapsedMs >= POLL_TIMEOUT_MS) {
+                if (cookieStr.isNotBlank()) {
                     saveCookiesAndDismiss(cookieStr)
+                } else {
+                    updateStatus("Timed out. Try again.")
                 }
-                cookieStr.contains("__ddg2_") || cookieStr.contains("__ddg1_") -> {
-                    if (pollElapsedMs >= POLL_TIMEOUT_MS / 2) {
-                        saveCookiesAndDismiss(cookieStr)
-                    } else {
-                        scheduleNextPoll()
-                    }
-                }
-                pollElapsedMs >= POLL_TIMEOUT_MS -> {
-                    updateStatus("⏱️ Timed out. Try again.")
-                }
-                else -> {
-                    scheduleNextPoll()
-                }
+            } else {
+                scheduleNextPoll()
             }
         }
     }
 
     private fun scheduleNextPoll() {
         pollElapsedMs += POLL_INTERVAL_MS
-        updateStatus("⏳ Waiting for cookies… (${pollElapsedMs / 1000}s)")
+        updateStatus("Checking verification... (${pollElapsedMs / 1000}s)")
 
-        if (pollElapsedMs >= POLL_INTERVAL_MS) {
-            (dialog as? com.google.android.material.bottomsheet.BottomSheetDialog)?.behavior?.apply {
+        if (pollElapsedMs >= 2000L) {
+            (dialog as? BottomSheetDialog)?.behavior?.apply {
                 skipCollapsed = true
                 peekHeight = android.view.WindowManager.LayoutParams.MATCH_PARENT
-                state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+                state = BottomSheetBehavior.STATE_EXPANDED
             }
         }
 
@@ -107,8 +106,8 @@ class CloudflareWebViewDialog(
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val dialog = super.onCreateDialog(savedInstanceState)
-        (dialog as? com.google.android.material.bottomsheet.BottomSheetDialog)?.behavior?.apply {
-            state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_COLLAPSED
+        (dialog as? BottomSheetDialog)?.behavior?.apply {
+            state = BottomSheetBehavior.STATE_COLLAPSED
             skipCollapsed = false
             peekHeight = 0
         }
@@ -121,7 +120,7 @@ class CloudflareWebViewDialog(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         )
-        val bottomSheet = dialog?.findViewById<android.view.View>(
+        val bottomSheet = dialog?.findViewById<View>(
             com.google.android.material.R.id.design_bottom_sheet
         )
         bottomSheet?.layoutParams?.height = ViewGroup.LayoutParams.MATCH_PARENT
@@ -147,14 +146,14 @@ class CloudflareWebViewDialog(
         }
 
         root.addView(TextView(requireContext()).apply {
-            text = "🛡️ Musicbd25 – Cloudflare Bypass"
+            text = "Protection Bypass"
             textSize = 18f
             setTextColor(Color.WHITE)
             setPadding(0, 0, 0, 8)
         })
 
         statusText = TextView(requireContext()).apply {
-            text = "Loading challenge page…"
+            text = "Loading challenge page..."
             textSize = 13f
             setTextColor(Color.parseColor("#A0A0B0"))
             setPadding(0, 0, 0, 4)
@@ -162,7 +161,7 @@ class CloudflareWebViewDialog(
         root.addView(statusText)
 
         root.addView(TextView(requireContext()).apply {
-            text = "Solve any CAPTCHA shown. The dialog will close automatically once done."
+            text = "Please wait while verification completes automatically."
             textSize = 11f
             setTextColor(Color.parseColor("#707080"))
             setPadding(0, 0, 0, 12)
@@ -223,13 +222,14 @@ class CloudflareWebViewDialog(
             allowContentAccess = true
             allowFileAccess = true
             loadsImagesAutomatically = true
+            userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
         wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 super.onProgressChanged(view, newProgress)
                 if (!cookiesSaved) {
-                    updateStatus("Loading… $newProgress%")
+                    updateStatus("Loading... $newProgress%")
                 }
             }
         }
@@ -246,16 +246,16 @@ class CloudflareWebViewDialog(
                 val title = view?.title ?: ""
                 Log.d(TAG, "onPageFinished title='$title' url=$url")
 
-                if (isChallengeTitle(title)) {
-                    updateStatus("🔄 Challenge active – solve the CAPTCHA above")
-                } else {
-                    updateStatus("✏️ Page loaded – saving cookies…")
+                if (!isChallengeTitle(title) && !title.equals("about:blank", ignoreCase = true) && title.isNotBlank()) {
                     CookieManager.getInstance().flush()
+                    val cookieStr = CookieManager.getInstance().getCookie(targetHost) 
+                        ?: CookieManager.getInstance().getCookie(url ?: targetHost) 
+                        ?: ""
 
-                    val cookiesFromTarget = CookieManager.getInstance().getCookie(targetHost) ?: ""
-                    
-                    handler.removeCallbacks(cookiePollRunnable)
-                    saveCookiesAndDismiss(cookiesFromTarget)
+                    if (cookieStr.isNotBlank()) {
+                        handler.removeCallbacks(cookiePollRunnable)
+                        saveCookiesAndDismiss(cookieStr)
+                    }
                 }
             }
         }
@@ -275,15 +275,15 @@ class CloudflareWebViewDialog(
             MusicbdPlugin.cfUserAgent = ua
         }
 
-        Log.d(TAG, "✅ Saved cookies: $cookieStr")
-        updateStatus("✅ Done! Cookies saved.")
+        Log.d(TAG, "Saved all cookies: $cookieStr")
+        updateStatus("Done! All cookies saved.")
 
         webView?.postDelayed({
             if (isAdded) {
                 onFinished?.invoke(true)
                 dismissAllowingStateLoss()
             }
-        }, 1500)
+        }, 800)
     }
 
     override fun onDismiss(dialog: android.content.DialogInterface) {
@@ -297,7 +297,7 @@ class CloudflareWebViewDialog(
     private fun updateStatus(msg: String) {
         activity?.runOnUiThread {
             statusText?.text = msg
-            if (msg.startsWith("✅")) {
+            if (msg.startsWith("Done")) {
                 progressBar?.visibility = View.GONE
                 statusText?.setTextColor(Color.parseColor("#4CAF50"))
             } else {
