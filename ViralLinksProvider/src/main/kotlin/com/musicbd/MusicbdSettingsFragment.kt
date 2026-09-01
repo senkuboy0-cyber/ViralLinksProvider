@@ -3,19 +3,21 @@ package com.musicbd
 import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.res.ResourcesCompat
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
@@ -26,12 +28,18 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
     private lateinit var bypassBtn: Button
     private lateinit var ctx: Context
 
+    private fun getPluginDrawable(name: String): Drawable? {
+        val id = plugin.resources?.getIdentifier(name, "drawable", "com.musicbd") ?: 0
+        if (id == 0) return null
+        return ResourcesCompat.getDrawable(plugin.resources!!, id, null)
+    }
+
     @SuppressLint("SetTextI18n")
     override fun onCreateView(
         inflater: android.view.LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
+    ): View {
         ctx = requireContext()
         
         val scrollView = ScrollView(ctx).apply {
@@ -50,15 +58,49 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
             )
             gravity = Gravity.TOP
         }
+
+        // Header Layout for Title and Save Button
+        val headerLayout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dpToPx(12) }
+            gravity = Gravity.CENTER_VERTICAL
+        }
         
-        // Title
+        // Title text with weight to push the save button to the right end
         val title = TextView(ctx).apply {
             text = "Musicbd25 Settings"
             textSize = 20f
             setTextColor(Color.WHITE)
-            setPadding(0, 0, 0, dpToPx(12))
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f 
+            )
         }
-        mainLayout.addView(title)
+        headerLayout.addView(title)
+
+        // Save Button Icon
+        val saveBtn = ImageView(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24))
+            
+            val icon = getPluginDrawable("save_icon")
+            if (icon != null) {
+                setImageDrawable(icon)
+            } else {
+                setImageResource(android.R.drawable.ic_menu_save)
+            }
+            
+            setOnClickListener {
+                Toast.makeText(ctx, "Settings Saved", Toast.LENGTH_SHORT).show()
+                dismiss()
+            }
+        }
+        headerLayout.addView(saveBtn)
+        
+        mainLayout.addView(headerLayout)
         
         // Divider
         val divider = View(ctx).apply {
@@ -105,6 +147,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                     onFinished = { saved ->
                         if (saved) {
                             bypassBtn.text = "✅ CF Cookies Saved"
+                            Toast.makeText(ctx, "✅ Done! Cookies saved", Toast.LENGTH_SHORT).show()
                         }
                     }
                 )
@@ -113,7 +156,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         }
         mainLayout.addView(bypassBtn)
         
-        // Clear Button
+        // Clear Cookies Button
         val clearBtn = Button(ctx).apply {
             text = "Clear CF Cookies"
             layoutParams = LinearLayout.LayoutParams(
