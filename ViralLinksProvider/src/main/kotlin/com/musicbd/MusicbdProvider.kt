@@ -1,7 +1,5 @@
 package com.musicbd
 
-import android.webkit.CookieManager
-import android.webkit.WebSettings
 import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -100,20 +98,17 @@ class MusicbdProvider : MainAPI() {
         private val cfMutex = Mutex()
         
         private val CF_BLOCKER_PHRASES = listOf(
-            "checking your browser",
-            "this process is automatic",
-            "redirect to your requested content shortly",
-            "ddos-guard",
             "just a moment",
+            "checking your browser",
+            "ddos-guard",
             "attention required",
             "verify you are human",
             "cloudflare"
         )
 
         fun isCloudflareBlocked(response: com.lagradost.nicehttp.NiceResponse): Boolean {
-            if (response.code == 403 || response.code == 503 || response.code == 429) return true
-            val bodyText = response.text.lowercase()
-            return CF_BLOCKER_PHRASES.any { bodyText.contains(it) }
+            if (response.code == 403 || response.code == 503) return true
+            return CF_BLOCKER_PHRASES.any { response.text.lowercase().contains(it) }
         }
         
         fun isAutoWebviewEnabled(): Boolean {
@@ -129,32 +124,20 @@ class MusicbdProvider : MainAPI() {
             if (isCloudflareBlocked(rawResponse)) {
                 if (isAutoWebviewEnabled()) {
                     cfMutex.withLock {
+                        // Double-check inside the lock. Another parallel request might have already solved the bypass.
                         var checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
                         
                         if (isCloudflareBlocked(checkResp)) {
+                            // Cookies are either empty or expired. Clear all old cookies automatically.
                             MusicbdPlugin.cfCookies = ""
-                            val cookieManager = CookieManager.getInstance()
+                            val cookieManager = android.webkit.CookieManager.getInstance()
                             cookieManager.removeAllCookies(null)
                             cookieManager.flush()
                             
-                            val bypassUrl = "https://musicbd25.site"
-                            val success = showMusicbdCFBypassDialogAndWait(bypassUrl)
-                            
+                            // Open WebView only once to get fresh cookies
+                            val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
                             if (success) {
-                                val newCookies = cookieManager.getCookie(bypassUrl) ?: ""
-                                if (newCookies.isNotEmpty()) {
-                                    MusicbdPlugin.cfCookies = newCookies
-                                }
-                                
-                                try {
-                                    val activity = CommonActivity.activity
-                                    if (activity != null) {
-                                        MusicbdPlugin.cfUserAgent = WebSettings.getDefaultUserAgent(activity)
-                                    }
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                                
+                                // Retry the request with the newly fetched cookies
                                 checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
                             }
                         }
