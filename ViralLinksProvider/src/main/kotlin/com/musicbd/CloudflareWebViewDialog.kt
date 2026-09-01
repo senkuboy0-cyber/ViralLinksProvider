@@ -21,17 +21,13 @@ import android.widget.TextView
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.lagradost.api.Log
 
-/**
- * Full-screen BottomSheet that loads [targetUrl] in a real WebView so Cloudflare's
- * JS challenge / Turnstile CAPTCHA can run in a genuine browser environment.
- */
 class CloudflareWebViewDialog(
     private val targetUrl: String,
     private val onFinished: ((Boolean) -> Unit)? = null
 ) : BottomSheetDialogFragment() {
 
     companion object {
-        private const val TAG = "MusicBD_CFWebViewDialog"
+        private const val TAG = "Musicbd_CFWebViewDialog"
         private const val POLL_INTERVAL_MS = 2_000L
         private const val POLL_TIMEOUT_MS = 120_000L
 
@@ -51,6 +47,7 @@ class CloudflareWebViewDialog(
     private var webView: WebView? = null
     private var statusText: TextView? = null
     private var progressBar: ProgressBar? = null
+
     private val handler = Handler(Looper.getMainLooper())
     private var cookiesSaved = false
     private var pollElapsedMs = 0L
@@ -169,6 +166,11 @@ class CloudflareWebViewDialog(
             textSize = 11f
             setTextColor(Color.parseColor("#707080"))
             setPadding(0, 0, 0, 12)
+        }
+        root.addView(TextView(requireContext()).apply {
+            text = ""
+            textSize = 0f
+            setPadding(0, 0, 0, 0)
         })
 
         progressBar = ProgressBar(
@@ -239,8 +241,7 @@ class CloudflareWebViewDialog(
 
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(
-                view: WebView?,
-                request: WebResourceRequest?
+                view: WebView?, request: WebResourceRequest?
             ): Boolean = false
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -253,27 +254,13 @@ class CloudflareWebViewDialog(
                 if (isChallengeTitle(title)) {
                     updateStatus("🔄 Challenge active – solve the CAPTCHA above")
                 } else {
-                    updateStatus("✏️ Page loaded – checking cookies…")
+                    updateStatus("✏️ Page loaded – saving cookies…")
                     CookieManager.getInstance().flush()
 
                     val cookiesFromTarget = CookieManager.getInstance().getCookie(targetHost) ?: ""
-                    val cookiesFromUrl = url?.let {
-                        runCatching {
-                            val uri = android.net.Uri.parse(it)
-                            CookieManager.getInstance().getCookie("${uri.scheme}://${uri.host}")
-                        }.getOrNull()
-                    } ?: ""
-
-                    val bestCookies = when {
-                        cookiesFromTarget.contains("cf_clearance") -> cookiesFromTarget
-                        cookiesFromUrl.contains("cf_clearance") -> cookiesFromUrl
-                        else -> null
-                    }
-
-                    if (bestCookies != null) {
-                        handler.removeCallbacks(cookiePollRunnable)
-                        saveCookiesAndDismiss(bestCookies)
-                    }
+                    
+                    handler.removeCallbacks(cookiePollRunnable)
+                    saveCookiesAndDismiss(cookiesFromTarget)
                 }
             }
         }
