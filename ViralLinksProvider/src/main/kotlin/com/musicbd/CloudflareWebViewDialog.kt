@@ -52,6 +52,16 @@ class CloudflareWebViewDialog(
     private val handler = Handler(Looper.getMainLooper())
     private var cookiesSaved = false
     private var pollElapsedMs = 0L
+    private var pageProgress = 0
+
+    private val targetHost: String by lazy {
+        try {
+            val uri = android.net.Uri.parse(targetUrl)
+            "${uri.scheme}://${uri.host}"
+        } catch (_: Exception) {
+            targetUrl
+        }
+    }
 
     private val cookiePollRunnable = object : Runnable {
         override fun run() {
@@ -61,15 +71,17 @@ class CloudflareWebViewDialog(
             val cookieStr = CookieManager.getInstance().getCookie(targetUrl) ?: ""
             val title = webView?.title?.lowercase() ?: ""
 
-            Log.d(TAG, "Poll [$pollElapsedMs ms] Title: '$title' | Cookies: $cookieStr")
+            Log.d(TAG, "Poll [$pollElapsedMs ms] Prog: $pageProgress% | Title: '$title' | Cookies: $cookieStr")
 
             val hasCookies = cookieStr.isNotBlank()
             val isChallenge = isChallengeTitle(title)
             val isValidPage = title.isNotBlank() && title != "about:blank"
 
-            if (hasCookies && !isChallenge && isValidPage) {
-                saveCookiesAndDismiss(cookieStr)
-                return
+            if (hasCookies && !isChallenge && isValidPage && pageProgress == 100) {
+                if (cookieStr.contains("__ddg") || cookieStr.contains("cf_clearance") || pollElapsedMs >= 4000L) {
+                    saveCookiesAndDismiss(cookieStr)
+                    return
+                }
             }
 
             if (pollElapsedMs >= POLL_TIMEOUT_MS) {
@@ -223,6 +235,7 @@ class CloudflareWebViewDialog(
         wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 super.onProgressChanged(view, newProgress)
+                pageProgress = newProgress
                 if (!cookiesSaved) {
                     updateStatus("Loading... $newProgress%")
                 }
@@ -258,7 +271,7 @@ class CloudflareWebViewDialog(
                 onFinished?.invoke(true)
                 dismissAllowingStateLoss()
             }
-        }, 800)
+        }, 1000)
     }
 
     override fun onDismiss(dialog: android.content.DialogInterface) {
