@@ -124,13 +124,14 @@ class MusicbdProvider : MainAPI() {
             if (isCloudflareBlocked(rawResponse)) {
                 if (isAutoWebviewEnabled()) {
                     cfMutex.withLock {
-                        rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
-                        if (isCloudflareBlocked(rawResponse)) {
+                        var checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                        if (isCloudflareBlocked(checkResp)) {
                             val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
                             if (success) {
-                                rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                                checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
                             }
                         }
+                        rawResponse = checkResp
                     }
                 }
             }
