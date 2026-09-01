@@ -151,7 +151,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                     onFinished = { saved ->
                         if (saved) {
                             bypassBtn.text = "✅ CF Cookies Saved"
-                            Toast.makeText(ctx, "✅ Done! Cookies saved", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(ctx, "Done! Cookies saved", Toast.LENGTH_SHORT).show()
                         }
                     }
                 )
@@ -171,19 +171,22 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                     .setTitle("Clear CF Cookies?")
                     .setMessage("This will remove saved cookies. You need to bypass again.")
                     .setPositiveButton("Clear") { _, _ ->
-                        val host = MusicbdPlugin.cfCookieHost
-                        if (host.isNotBlank()) {
-                            val cm = CookieManager.getInstance()
-                            listOf("cf_clearance", "__ddg1_", "__ddg2_", "__cfruid").forEach { name ->
-                                cm.setCookie(host, "$name=; Max-Age=0")
-                            }
-                            cm.flush()
+                        
+                        val cm = CookieManager.getInstance()
+                        val domain = "musicbd25.site"
+                        
+                        listOf("cf_clearance", "__ddg1_", "__ddg2_", "__cfruid").forEach { name ->
+                            cm.setCookie(domain, "$name=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
+                            cm.setCookie(".$domain", "$name=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT")
                         }
+                        cm.flush()
+                        
                         MusicbdPlugin.cfCookies = ""
                         MusicbdPlugin.cfUserAgent = ""
                         MusicbdPlugin.cfCookieHost = ""
+                        
                         bypassBtn.text = "🛡️ Bypass Cloudflare"
-                        Toast.makeText(ctx, "✅ CF Cookies cleared", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(ctx, "CF Cookies cleared", Toast.LENGTH_SHORT).show()
                     }
                     .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
                     .show()
