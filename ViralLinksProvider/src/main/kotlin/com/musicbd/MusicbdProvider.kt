@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
+import android.webkit.CookieManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -29,13 +30,15 @@ object MusicbdCFBypassInterceptor : Interceptor {
             builder.header("User-Agent", savedUa)
         }
 
-        val savedCookies = MusicbdPlugin.cfCookies
-        if (savedCookies.isNotEmpty()) {
-            val existingCookie = original.header("Cookie") ?: ""
-            val base = existingCookie.split(";").map { it.trim() }
-                .filter { it.isNotEmpty() && !it.startsWith("cf_clearance=") }
-            val fresh = savedCookies.split(";").map { it.trim() }.filter { it.isNotEmpty() }
-            builder.header("Cookie", (base + fresh).distinct().joinToString("; "))
+        // Live CookieManager থেকে সরাসরি কুকি নেওয়া হচ্ছে যাতে কোনো গ্লিচ না হয়
+        val cm = CookieManager.getInstance()
+        val urlString = original.url.toString()
+        val webViewCookies = cm.getCookie(urlString)
+
+        if (!webViewCookies.isNullOrEmpty()) {
+            builder.header("Cookie", webViewCookies)
+        } else if (MusicbdPlugin.cfCookies.isNotEmpty()) {
+            builder.header("Cookie", MusicbdPlugin.cfCookies)
         }
 
         return chain.proceed(builder.build())
@@ -96,6 +99,7 @@ class MusicbdProvider : MainAPI() {
 
     companion object {
         private val cfMutex = Mutex()
+        private var lastBypassTime = 0L // ৩ মিনিটের কড়াকড়ি টাইমার
         
         private val CF_BLOCKER_PHRASES = listOf(
             "just a moment",
@@ -107,8 +111,14 @@ class MusicbdProvider : MainAPI() {
         )
 
         fun isCloudflareBlocked(response: com.lagradost.nicehttp.NiceResponse): Boolean {
-            if (response.code == 403 || response.code == 503) return true
-            return CF_BLOCKER_PHRASES.any { response.text.lowercase().contains(it) }
+            val text = response.text.lowercase()
+            if (CF_BLOCKER_PHRASES.any { text.contains(it) }) return true
+            
+            if (response.code == 403 || response.code == 503) {
+                // Rate limit (DDoS protection) হলে ব্লক ধরবে, কিন্তু আসল পেজ হলে ব্লক ধরবে না
+                if (!text.contains("musicbd25")) return true
+            }
+            return false
         }
         
         fun isAutoWebviewEnabled(): Boolean {
@@ -127,11 +137,16 @@ class MusicbdProvider : MainAPI() {
                         var checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
                         
                         if (isCloudflareBlocked(checkResp)) {
-                            MusicbdPlugin.cfCookies = ""
+                            val currentTime = System.currentTimeMillis()
                             
-                            val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
-                            if (success) {
-                                checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                            // STRICT CHECK: আগের ডায়ালগ খোলার পর ৩ মিনিট পার না হওয়া পর্যন্ত আর কোনো ডায়ালগ খুলবে না!
+                            if (currentTime - lastBypassTime > 3 * 60 * 1000) {
+                                val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
+                                lastBypassTime = System.currentTimeMillis() // টাইমার আপডেট
+                                
+                                if (success) {
+                                    checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                                }
                             }
                         }
                         rawResponse = checkResp
