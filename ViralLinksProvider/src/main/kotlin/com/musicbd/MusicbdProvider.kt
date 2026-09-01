@@ -4,7 +4,6 @@ import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
-import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -76,7 +75,7 @@ class MusicbdProvider : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie)
 
-    private val defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    private val defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     private val excludedSrcs = listOf(
         "1000016877",
@@ -111,6 +110,10 @@ class MusicbdProvider : MainAPI() {
             if (response.code == 403 || response.code == 503) return true
             return CF_BLOCKER_PHRASES.any { response.text.lowercase().contains(it) }
         }
+        
+        fun isAutoWebviewEnabled(): Boolean {
+            return getKey<Boolean>("auto_webview_bypass") ?: true
+        }
 
         suspend fun appGet(
             url: String,
@@ -119,20 +122,20 @@ class MusicbdProvider : MainAPI() {
             var rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
             
             if (isCloudflareBlocked(rawResponse)) {
-                cfMutex.withLock {
-                    rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
-                    if (isCloudflareBlocked(rawResponse)) {
-                        showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
+                if (isAutoWebviewEnabled()) {
+                    cfMutex.withLock {
                         rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                        if (isCloudflareBlocked(rawResponse)) {
+                            val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
+                            if (success) {
+                                rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                            }
+                        }
                     }
                 }
             }
             return rawResponse
         }
-    }
-
-    private fun isAutoWebviewEnabled(): Boolean {
-        return getKey<Boolean>("auto_webview_bypass") ?: true
     }
 
     private fun upgradeBloggerImageSize(url: String): String {
