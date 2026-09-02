@@ -26,6 +26,7 @@ object MusicbdCFBypassInterceptor : Interceptor {
             .removeHeader("X-Requested-With")
             .header("sec-ch-ua-mobile", "?1")
             .header("sec-ch-ua-platform", "\"Android\"")
+            .header("Cache-Control", "no-cache") 
 
         val savedUa = MusicbdPlugin.cfUserAgent
         if (savedUa.isNotEmpty()) {
@@ -37,10 +38,25 @@ object MusicbdCFBypassInterceptor : Interceptor {
         val savedCookies = MusicbdPlugin.cfCookies
         if (savedCookies.isNotEmpty()) {
             val existingCookie = original.header("Cookie") ?: ""
-            val base = existingCookie.split(";").map { it.trim() }
-                .filter { it.isNotEmpty() && !it.startsWith("cf_clearance=") && !it.startsWith("vDDoS-Da=") }
-            val fresh = savedCookies.split(";").map { it.trim() }.filter { it.isNotEmpty() }
-            val finalCookie = (base + fresh).distinct().joinToString("; ")
+            val cookieMap = mutableMapOf<String, String>()
+            
+            if (existingCookie.isNotEmpty()) {
+                existingCookie.split(";").forEach {
+                    val parts = it.trim().split("=", limit = 2)
+                    if (parts.isNotEmpty() && parts[0].isNotEmpty()) {
+                        cookieMap[parts[0]] = if (parts.size > 1) parts[1] else ""
+                    }
+                }
+            }
+            
+            savedCookies.split(";").forEach {
+                val parts = it.trim().split("=", limit = 2)
+                if (parts.isNotEmpty() && parts[0].isNotEmpty()) {
+                    cookieMap[parts[0]] = if (parts.size > 1) parts[1] else ""
+                }
+            }
+            
+            val finalCookie = cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
             builder.header("Cookie", finalCookie)
         }
 
@@ -137,26 +153,26 @@ class MusicbdProvider : MainAPI() {
                 MusicbdLogger.log("Failed to fetch system User-Agent")
             }
 
+            val noCacheHeaders = headers.toMutableMap()
+            noCacheHeaders["Cache-Control"] = "no-cache"
+            
             MusicbdLogger.log("Requesting URL: $url")
-            var rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+            var rawResponse = app.get(url, headers = noCacheHeaders, interceptor = MusicbdCFBypassInterceptor)
             
             if (isCloudflareBlocked(rawResponse)) {
                 MusicbdLogger.log("Blocked by Protection (Code: ${rawResponse.code})")
                 
                 if (isAutoWebviewEnabled()) {
                     cfMutex.withLock {
-                        var checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                        var checkResp = app.get(url, headers = noCacheHeaders, interceptor = MusicbdCFBypassInterceptor)
                         
                         if (isCloudflareBlocked(checkResp)) {
                             MusicbdLogger.log("Opening WebView to bypass protection...")
                             
-                            MusicbdPlugin.cfCookies = ""
-                            val cookieManager = android.webkit.CookieManager.getInstance()
-                            cookieManager.removeAllCookies(null)
-                            cookieManager.flush()
-                            
-                            val success = showMusicbdCFBypassDialogAndWait(url)
+                            val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
                             if (success) {
+                                val cookieManager = android.webkit.CookieManager.getInstance()
+                                cookieManager.flush() 
                                 val newCookies = cookieManager.getCookie("https://musicbd25.site") ?: ""
                                 if (newCookies.isNotEmpty()) {
                                     MusicbdPlugin.cfCookies = newCookies
@@ -166,10 +182,15 @@ class MusicbdProvider : MainAPI() {
                                 }
                                 
                                 MusicbdLogger.log("Retrying request after bypass...")
-                                checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                                
+                                val bypassCacheHeaders = headers.toMutableMap()
+                                bypassCacheHeaders["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+                                bypassCacheHeaders["Pragma"] = "no-cache"
+                                
+                                checkResp = app.get(url, headers = bypassCacheHeaders, interceptor = MusicbdCFBypassInterceptor)
                                 
                                 if (isCloudflareBlocked(checkResp)) {
-                                    MusicbdLogger.log("Retry failed! Still blocked by Protection.")
+                                    MusicbdLogger.log("Retry failed! Still blocked. (Possibly Cached: ${checkResp.cacheResponse != null})")
                                 } else {
                                     MusicbdLogger.log("Bypass successful! Page loaded.")
                                 }
