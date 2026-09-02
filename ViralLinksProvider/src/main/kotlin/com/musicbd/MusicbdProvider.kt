@@ -1,6 +1,5 @@
 package com.musicbd
 
-import android.webkit.WebSettings
 import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -18,46 +17,25 @@ import okhttp3.Response
 import kotlin.coroutines.resume
 
 object MusicbdCFBypassInterceptor : Interceptor {
-    var systemUserAgent: String = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
         val builder = original.newBuilder()
             .removeHeader("X-Requested-With")
             .header("sec-ch-ua-mobile", "?1")
             .header("sec-ch-ua-platform", "\"Android\"")
-            .header("Cache-Control", "no-cache") 
 
         val savedUa = MusicbdPlugin.cfUserAgent
         if (savedUa.isNotEmpty()) {
             builder.header("User-Agent", savedUa)
-        } else {
-            builder.header("User-Agent", systemUserAgent)
         }
 
         val savedCookies = MusicbdPlugin.cfCookies
         if (savedCookies.isNotEmpty()) {
             val existingCookie = original.header("Cookie") ?: ""
-            val cookieMap = mutableMapOf<String, String>()
-            
-            if (existingCookie.isNotEmpty()) {
-                existingCookie.split(";").forEach {
-                    val parts = it.trim().split("=", limit = 2)
-                    if (parts.isNotEmpty() && parts[0].isNotEmpty()) {
-                        cookieMap[parts[0]] = if (parts.size > 1) parts[1] else ""
-                    }
-                }
-            }
-            
-            savedCookies.split(";").forEach {
-                val parts = it.trim().split("=", limit = 2)
-                if (parts.isNotEmpty() && parts[0].isNotEmpty()) {
-                    cookieMap[parts[0]] = if (parts.size > 1) parts[1] else ""
-                }
-            }
-            
-            val finalCookie = cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
-            builder.header("Cookie", finalCookie)
+            val base = existingCookie.split(";").map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("cf_clearance=") }
+            val fresh = savedCookies.split(";").map { it.trim() }.filter { it.isNotEmpty() }
+            builder.header("Cookie", (base + fresh).distinct().joinToString("; "))
         }
 
         return chain.proceed(builder.build())
@@ -69,7 +47,6 @@ suspend fun showMusicbdCFBypassDialogAndWait(url: String): Boolean =
         suspendCancellableCoroutine { cont ->
             val activity = CommonActivity.activity as? AppCompatActivity
             if (activity == null || activity.isFinishing || activity.isDestroyed) {
-                MusicbdLogger.log("Error: Activity is null, cannot open WebView.")
                 cont.resume(false)
                 return@suspendCancellableCoroutine
             }
@@ -98,7 +75,7 @@ class MusicbdProvider : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie)
 
-    private val defaultPosterUrl = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhQvNXfZt7ctszD6Fy_FwU7NfcyxIEZ6uW6asTw_5cMPS38hkm65bQdzb2bCD-86XfOUVmp5xjOANaefT4ZdWSCf_picqYtsAN5McX_3gVEfdVa5EA4h9e2noiaNLwUhMK8VaGx1mQGI_7TCnpmEI3LxtgNPeVpKsojjSbqSZh50VbyrTiP7_2KOIusBBsC/s1024/1000073990.png"
+    private val defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     private val excludedSrcs = listOf(
         "1000016877",
@@ -112,6 +89,7 @@ class MusicbdProvider : MainAPI() {
     )
 
     private val ua = mapOf(
+        "User-Agent" to defaultUserAgent,
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language" to "en-US,en;q=0.5"
     )
@@ -129,7 +107,7 @@ class MusicbdProvider : MainAPI() {
         )
 
         fun isCloudflareBlocked(response: com.lagradost.nicehttp.NiceResponse): Boolean {
-            if (response.code == 403 || response.code == 503 || response.code == 202) return true
+            if (response.code == 403 || response.code == 503) return true
             return CF_BLOCKER_PHRASES.any { response.text.lowercase().contains(it) }
         }
         
@@ -141,67 +119,30 @@ class MusicbdProvider : MainAPI() {
             url: String,
             headers: Map<String, String> = emptyMap()
         ): com.lagradost.nicehttp.NiceResponse {
-            
-            try {
-                val sysUa = withContext(Dispatchers.Main) {
-                    CommonActivity.activity?.let { WebSettings.getDefaultUserAgent(it) }
-                }
-                if (!sysUa.isNullOrEmpty()) {
-                    MusicbdCFBypassInterceptor.systemUserAgent = sysUa
-                }
-            } catch (e: Exception) {
-                MusicbdLogger.log("Failed to fetch system User-Agent")
-            }
-
-            val noCacheHeaders = headers.toMutableMap()
-            noCacheHeaders["Cache-Control"] = "no-cache"
-            
-            MusicbdLogger.log("Requesting URL: $url")
-            var rawResponse = app.get(url, headers = noCacheHeaders, interceptor = MusicbdCFBypassInterceptor)
+            var rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
             
             if (isCloudflareBlocked(rawResponse)) {
-                MusicbdLogger.log("Blocked by Protection (Code: ${rawResponse.code})")
-                
                 if (isAutoWebviewEnabled()) {
                     cfMutex.withLock {
-                        var checkResp = app.get(url, headers = noCacheHeaders, interceptor = MusicbdCFBypassInterceptor)
+                        // Double-check inside the lock. Another parallel request might have already solved the bypass.
+                        var checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
                         
                         if (isCloudflareBlocked(checkResp)) {
-                            MusicbdLogger.log("Opening WebView to bypass protection...")
+                            // Cookies are either empty or expired. Clear all old cookies automatically.
+                            MusicbdPlugin.cfCookies = ""
+                            val cookieManager = android.webkit.CookieManager.getInstance()
+                            cookieManager.removeAllCookies(null)
+                            cookieManager.flush()
                             
+                            // Open WebView only once to get fresh cookies
                             val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
                             if (success) {
-                                val cookieManager = android.webkit.CookieManager.getInstance()
-                                cookieManager.flush() 
-                                val newCookies = cookieManager.getCookie("https://musicbd25.site") ?: ""
-                                if (newCookies.isNotEmpty()) {
-                                    MusicbdPlugin.cfCookies = newCookies
-                                    MusicbdLogger.log("Cookies fetched successfully: ${newCookies.take(20)}...")
-                                } else {
-                                    MusicbdLogger.log("Warning: WebView closed but cookies are empty.")
-                                }
-                                
-                                MusicbdLogger.log("Retrying request after bypass...")
-                                
-                                val bypassCacheHeaders = headers.toMutableMap()
-                                bypassCacheHeaders["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-                                bypassCacheHeaders["Pragma"] = "no-cache"
-                                
-                                checkResp = app.get(url, headers = bypassCacheHeaders, interceptor = MusicbdCFBypassInterceptor)
-                                
-                                if (isCloudflareBlocked(checkResp)) {
-                                    MusicbdLogger.log("Retry failed! Still blocked.")
-                                } else {
-                                    MusicbdLogger.log("Bypass successful! Page loaded.")
-                                }
-                            } else {
-                                MusicbdLogger.log("WebView dialog was closed or failed.")
+                                // Retry the request with the newly fetched cookies
+                                checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
                             }
                         }
                         rawResponse = checkResp
                     }
-                } else {
-                    MusicbdLogger.log("Auto WebView is disabled in settings.")
                 }
             }
             return rawResponse
@@ -218,6 +159,28 @@ class MusicbdProvider : MainAPI() {
             if (src.contains(excluded)) return false
         }
         return true
+    }
+
+    private suspend fun fetchPoster(url: String): String {
+        val defaultPoster = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhQvNXfZt7ctszD6Fy_FwU7NfcyxIEZ6uW6asTw_5cMPS38hkm65bQdzb2bCD-86XfOUVmp5xjOANaefT4ZdWSCf_picqYtsAN5McX_3gVEfdVa5EA4h9e2noiaNLwUhMK8VaGx1mQGI_7TCnpmEI3LxtgNPeVpKsojjSbqSZh50VbyrTiP7_2KOIusBBsC/s1024/1000073990.png"
+        try {
+            val doc = appGet(url, headers = ua).document
+            
+            val elements = ArrayList<org.jsoup.nodes.Element>()
+            elements.addAll(doc.select("div.thumb img"))
+            elements.addAll(doc.select("div.finfo img"))
+            elements.addAll(doc.select("img[alt][title][src*=blogger.googleusercontent.com]"))
+            
+            for (element in elements) {
+                val src = element.attr("src").trim()
+                if (isValidPoster(src)) {
+                    return upgradeBloggerImageSize(src)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return defaultPoster
     }
 
     override val mainPage = mainPageOf(
@@ -239,7 +202,6 @@ class MusicbdProvider : MainAPI() {
         }
         
         if (linkElements.isEmpty()) {
-            MusicbdLogger.log("MainPage: No items found for ${request.name}")
             return newHomePageResponse(request.name, emptyList(), false)
         }
 
@@ -254,25 +216,18 @@ class MusicbdProvider : MainAPI() {
                     }
 
                     var title = el.text().trim()
-                    var poster = defaultPosterUrl
-                    
-                    val parent = el.closest("div.catlistblock") ?: el.closest("div.post") ?: el.parent()
-                    val imgEl = parent?.selectFirst("img")
-                    
-                    if (imgEl != null) {
-                        val src = imgEl.attr("src").trim()
-                        if (title.isBlank()) {
+                    if (title.isBlank()) {
+                        val imgEl = el.selectFirst("img")
+                        if (imgEl != null) {
                             title = imgEl.attr("alt").trim()
                         }
-                        if (isValidPoster(src)) {
-                            poster = upgradeBloggerImageSize(src)
-                        }
                     }
-                    
                     if (title.isBlank()) {
                         val parts = href.split("/")
                         title = parts.last().replace(".html", "").replace("-", " ")
                     }
+
+                    val poster = fetchPoster(href)
 
                     newMovieSearchResponse(title, href, TvType.Movie) {
                         this.posterUrl = poster
@@ -313,25 +268,18 @@ class MusicbdProvider : MainAPI() {
                     }
 
                     var title = el.text().trim()
-                    var poster = defaultPosterUrl
-                    
-                    val parent = el.closest("div.catlistblock") ?: el.closest("div.post") ?: el.parent()
-                    val imgEl = parent?.selectFirst("img")
-                    
-                    if (imgEl != null) {
-                        val src = imgEl.attr("src").trim()
-                        if (title.isBlank()) {
+                    if (title.isBlank()) {
+                        val imgEl = el.selectFirst("img")
+                        if (imgEl != null) {
                             title = imgEl.attr("alt").trim()
                         }
-                        if (isValidPoster(src)) {
-                            poster = upgradeBloggerImageSize(src)
-                        }
                     }
-                    
                     if (title.isBlank()) {
                         val parts = href.split("/")
                         title = parts.last().replace(".html", "").replace("-", " ")
                     }
+
+                    val poster = fetchPoster(href)
 
                     newMovieSearchResponse(title, href, TvType.Movie) {
                         this.posterUrl = poster
@@ -355,7 +303,7 @@ class MusicbdProvider : MainAPI() {
             title = doc.title().trim()
         }
 
-        var poster = defaultPosterUrl
+        var poster = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhQvNXfZt7ctszD6Fy_FwU7NfcyxIEZ6uW6asTw_5cMPS38hkm65bQdzb2bCD-86XfOUVmp5xjOANaefT4ZdWSCf_picqYtsAN5McX_3gVEfdVa5EA4h9e2noiaNLwUhMK8VaGx1mQGI_7TCnpmEI3LxtgNPeVpKsojjSbqSZh50VbyrTiP7_2KOIusBBsC/s1024/1000073990.png"
         
         val elements = ArrayList<org.jsoup.nodes.Element>()
         elements.addAll(doc.select("div.thumb img"))
