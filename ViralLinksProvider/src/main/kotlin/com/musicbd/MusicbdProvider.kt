@@ -1,5 +1,6 @@
 package com.musicbd
 
+import android.webkit.WebSettings
 import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -17,6 +18,8 @@ import okhttp3.Response
 import kotlin.coroutines.resume
 
 object MusicbdCFBypassInterceptor : Interceptor {
+    var systemUserAgent: String = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
         val builder = original.newBuilder()
@@ -28,7 +31,7 @@ object MusicbdCFBypassInterceptor : Interceptor {
         if (savedUa.isNotEmpty()) {
             builder.header("User-Agent", savedUa)
         } else {
-            builder.header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+            builder.header("User-Agent", systemUserAgent)
         }
 
         val savedCookies = MusicbdPlugin.cfCookies
@@ -37,7 +40,8 @@ object MusicbdCFBypassInterceptor : Interceptor {
             val base = existingCookie.split(";").map { it.trim() }
                 .filter { it.isNotEmpty() && !it.startsWith("cf_clearance=") }
             val fresh = savedCookies.split(";").map { it.trim() }.filter { it.isNotEmpty() }
-            builder.header("Cookie", (base + fresh).distinct().joinToString("; "))
+            val finalCookie = (base + fresh).distinct().joinToString("; ")
+            builder.header("Cookie", finalCookie)
         }
 
         return chain.proceed(builder.build())
@@ -49,6 +53,7 @@ suspend fun showMusicbdCFBypassDialogAndWait(url: String): Boolean =
         suspendCancellableCoroutine { cont ->
             val activity = CommonActivity.activity as? AppCompatActivity
             if (activity == null || activity.isFinishing || activity.isDestroyed) {
+                MusicbdLogger.log("Error: Activity is null, cannot open WebView.")
                 cont.resume(false)
                 return@suspendCancellableCoroutine
             }
@@ -118,14 +123,31 @@ class MusicbdProvider : MainAPI() {
             url: String,
             headers: Map<String, String> = emptyMap()
         ): com.lagradost.nicehttp.NiceResponse {
+            
+            try {
+                val sysUa = withContext(Dispatchers.Main) {
+                    CommonActivity.activity?.let { WebSettings.getDefaultUserAgent(it) }
+                }
+                if (!sysUa.isNullOrEmpty()) {
+                    MusicbdCFBypassInterceptor.systemUserAgent = sysUa
+                }
+            } catch (e: Exception) {
+                MusicbdLogger.log("Failed to fetch system User-Agent")
+            }
+
+            MusicbdLogger.log("Requesting URL: $url")
             var rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
             
             if (isCloudflareBlocked(rawResponse)) {
+                MusicbdLogger.log("Blocked by Cloudflare (Code: ${rawResponse.code})")
+                
                 if (isAutoWebviewEnabled()) {
                     cfMutex.withLock {
                         var checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
                         
                         if (isCloudflareBlocked(checkResp)) {
+                            MusicbdLogger.log("Opening WebView to bypass protection...")
+                            
                             MusicbdPlugin.cfCookies = ""
                             val cookieManager = android.webkit.CookieManager.getInstance()
                             cookieManager.removeAllCookies(null)
@@ -136,13 +158,30 @@ class MusicbdProvider : MainAPI() {
                                 val newCookies = cookieManager.getCookie("https://musicbd25.site") ?: ""
                                 if (newCookies.isNotEmpty()) {
                                     MusicbdPlugin.cfCookies = newCookies
+                                    MusicbdLogger.log("Cookies fetched successfully: ${newCookies.take(20)}...")
+                                } else {
+                                    MusicbdLogger.log("Warning: WebView closed but cookies are empty.")
                                 }
+                                
+                                MusicbdLogger.log("Retrying request after bypass...")
                                 checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
+                                
+                                if (isCloudflareBlocked(checkResp)) {
+                                    MusicbdLogger.log("Retry failed! Still blocked by Cloudflare.")
+                                } else {
+                                    MusicbdLogger.log("Bypass successful! Page loaded.")
+                                }
+                            } else {
+                                MusicbdLogger.log("WebView dialog was closed or failed.")
                             }
                         }
                         rawResponse = checkResp
                     }
+                } else {
+                    MusicbdLogger.log("Auto WebView is disabled in settings.")
                 }
+            } else {
+                MusicbdLogger.log("Request successful (Code: ${rawResponse.code})")
             }
             return rawResponse
         }
@@ -201,6 +240,7 @@ class MusicbdProvider : MainAPI() {
         }
         
         if (linkElements.isEmpty()) {
+            MusicbdLogger.log("MainPage: No items found for ${request.name}")
             return newHomePageResponse(request.name, emptyList(), false)
         }
 
