@@ -38,7 +38,7 @@ object MusicbdCFBypassInterceptor : Interceptor {
         if (savedCookies.isNotEmpty()) {
             val existingCookie = original.header("Cookie") ?: ""
             val base = existingCookie.split(";").map { it.trim() }
-                .filter { it.isNotEmpty() && !it.startsWith("cf_clearance=") }
+                .filter { it.isNotEmpty() && !it.startsWith("cf_clearance=") && !it.startsWith("vDDoS-Da=") }
             val fresh = savedCookies.split(";").map { it.trim() }.filter { it.isNotEmpty() }
             val finalCookie = (base + fresh).distinct().joinToString("; ")
             builder.header("Cookie", finalCookie)
@@ -82,6 +82,8 @@ class MusicbdProvider : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie)
 
+    private val defaultPosterUrl = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhQvNXfZt7ctszD6Fy_FwU7NfcyxIEZ6uW6asTw_5cMPS38hkm65bQdzb2bCD-86XfOUVmp5xjOANaefT4ZdWSCf_picqYtsAN5McX_3gVEfdVa5EA4h9e2noiaNLwUhMK8VaGx1mQGI_7TCnpmEI3LxtgNPeVpKsojjSbqSZh50VbyrTiP7_2KOIusBBsC/s1024/1000073990.png"
+
     private val excludedSrcs = listOf(
         "1000016877",
         "wp-1674077227462",
@@ -111,7 +113,7 @@ class MusicbdProvider : MainAPI() {
         )
 
         fun isCloudflareBlocked(response: com.lagradost.nicehttp.NiceResponse): Boolean {
-            if (response.code == 403 || response.code == 503) return true
+            if (response.code == 403 || response.code == 503 || response.code == 202) return true
             return CF_BLOCKER_PHRASES.any { response.text.lowercase().contains(it) }
         }
         
@@ -139,7 +141,7 @@ class MusicbdProvider : MainAPI() {
             var rawResponse = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
             
             if (isCloudflareBlocked(rawResponse)) {
-                MusicbdLogger.log("Blocked by Cloudflare (Code: ${rawResponse.code})")
+                MusicbdLogger.log("Blocked by Protection (Code: ${rawResponse.code})")
                 
                 if (isAutoWebviewEnabled()) {
                     cfMutex.withLock {
@@ -153,7 +155,7 @@ class MusicbdProvider : MainAPI() {
                             cookieManager.removeAllCookies(null)
                             cookieManager.flush()
                             
-                            val success = showMusicbdCFBypassDialogAndWait("https://musicbd25.site")
+                            val success = showMusicbdCFBypassDialogAndWait(url)
                             if (success) {
                                 val newCookies = cookieManager.getCookie("https://musicbd25.site") ?: ""
                                 if (newCookies.isNotEmpty()) {
@@ -167,7 +169,7 @@ class MusicbdProvider : MainAPI() {
                                 checkResp = app.get(url, headers = headers, interceptor = MusicbdCFBypassInterceptor)
                                 
                                 if (isCloudflareBlocked(checkResp)) {
-                                    MusicbdLogger.log("Retry failed! Still blocked by Cloudflare.")
+                                    MusicbdLogger.log("Retry failed! Still blocked by Protection.")
                                 } else {
                                     MusicbdLogger.log("Bypass successful! Page loaded.")
                                 }
@@ -180,8 +182,6 @@ class MusicbdProvider : MainAPI() {
                 } else {
                     MusicbdLogger.log("Auto WebView is disabled in settings.")
                 }
-            } else {
-                MusicbdLogger.log("Request successful (Code: ${rawResponse.code})")
             }
             return rawResponse
         }
@@ -197,28 +197,6 @@ class MusicbdProvider : MainAPI() {
             if (src.contains(excluded)) return false
         }
         return true
-    }
-
-    private suspend fun fetchPoster(url: String): String {
-        val defaultPoster = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhQvNXfZt7ctszD6Fy_FwU7NfcyxIEZ6uW6asTw_5cMPS38hkm65bQdzb2bCD-86XfOUVmp5xjOANaefT4ZdWSCf_picqYtsAN5McX_3gVEfdVa5EA4h9e2noiaNLwUhMK8VaGx1mQGI_7TCnpmEI3LxtgNPeVpKsojjSbqSZh50VbyrTiP7_2KOIusBBsC/s1024/1000073990.png"
-        try {
-            val doc = appGet(url, headers = ua).document
-            
-            val elements = ArrayList<org.jsoup.nodes.Element>()
-            elements.addAll(doc.select("div.thumb img"))
-            elements.addAll(doc.select("div.finfo img"))
-            elements.addAll(doc.select("img[alt][title][src*=blogger.googleusercontent.com]"))
-            
-            for (element in elements) {
-                val src = element.attr("src").trim()
-                if (isValidPoster(src)) {
-                    return upgradeBloggerImageSize(src)
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return defaultPoster
     }
 
     override val mainPage = mainPageOf(
@@ -255,18 +233,25 @@ class MusicbdProvider : MainAPI() {
                     }
 
                     var title = el.text().trim()
-                    if (title.isBlank()) {
-                        val imgEl = el.selectFirst("img")
-                        if (imgEl != null) {
+                    var poster = defaultPosterUrl
+                    
+                    val parent = el.closest("div.catlistblock") ?: el.closest("div.post") ?: el.parent()
+                    val imgEl = parent?.selectFirst("img")
+                    
+                    if (imgEl != null) {
+                        val src = imgEl.attr("src").trim()
+                        if (title.isBlank()) {
                             title = imgEl.attr("alt").trim()
                         }
+                        if (isValidPoster(src)) {
+                            poster = upgradeBloggerImageSize(src)
+                        }
                     }
+                    
                     if (title.isBlank()) {
                         val parts = href.split("/")
                         title = parts.last().replace(".html", "").replace("-", " ")
                     }
-
-                    val poster = fetchPoster(href)
 
                     newMovieSearchResponse(title, href, TvType.Movie) {
                         this.posterUrl = poster
@@ -307,18 +292,25 @@ class MusicbdProvider : MainAPI() {
                     }
 
                     var title = el.text().trim()
-                    if (title.isBlank()) {
-                        val imgEl = el.selectFirst("img")
-                        if (imgEl != null) {
+                    var poster = defaultPosterUrl
+                    
+                    val parent = el.closest("div.catlistblock") ?: el.closest("div.post") ?: el.parent()
+                    val imgEl = parent?.selectFirst("img")
+                    
+                    if (imgEl != null) {
+                        val src = imgEl.attr("src").trim()
+                        if (title.isBlank()) {
                             title = imgEl.attr("alt").trim()
                         }
+                        if (isValidPoster(src)) {
+                            poster = upgradeBloggerImageSize(src)
+                        }
                     }
+                    
                     if (title.isBlank()) {
                         val parts = href.split("/")
                         title = parts.last().replace(".html", "").replace("-", " ")
                     }
-
-                    val poster = fetchPoster(href)
 
                     newMovieSearchResponse(title, href, TvType.Movie) {
                         this.posterUrl = poster
@@ -342,7 +334,7 @@ class MusicbdProvider : MainAPI() {
             title = doc.title().trim()
         }
 
-        var poster = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhQvNXfZt7ctszD6Fy_FwU7NfcyxIEZ6uW6asTw_5cMPS38hkm65bQdzb2bCD-86XfOUVmp5xjOANaefT4ZdWSCf_picqYtsAN5McX_3gVEfdVa5EA4h9e2noiaNLwUhMK8VaGx1mQGI_7TCnpmEI3LxtgNPeVpKsojjSbqSZh50VbyrTiP7_2KOIusBBsC/s1024/1000073990.png"
+        var poster = defaultPosterUrl
         
         val elements = ArrayList<org.jsoup.nodes.Element>()
         elements.addAll(doc.select("div.thumb img"))
