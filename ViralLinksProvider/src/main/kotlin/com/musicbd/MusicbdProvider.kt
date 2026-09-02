@@ -190,7 +190,7 @@ class MusicbdProvider : MainAPI() {
                                 checkResp = app.get(url, headers = bypassCacheHeaders, interceptor = MusicbdCFBypassInterceptor)
                                 
                                 if (isCloudflareBlocked(checkResp)) {
-                                    MusicbdLogger.log("Retry failed! Still blocked. (Possibly Cached: ${checkResp.cacheResponse != null})")
+                                    MusicbdLogger.log("Retry failed! Still blocked.")
                                 } else {
                                     MusicbdLogger.log("Bypass successful! Page loaded.")
                                 }
