@@ -9,7 +9,7 @@
             "Cloudstream Extension"
         ],
         "description": "ViralLinksProvider",
-        "fileSize": 44956,
+        "fileSize": 42949,
         "repositoryUrl": "https://github.com/senkuboy0-cyber/ViralLinksProvider",
         "language": "en",
         "tvTypes": [
@@ -18,6 +18,6 @@
         ],
         "iconUrl": "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhQvNXfZt7ctszD6Fy_FwU7NfcyxIEZ6uW6asTw_5cMPS38hkm65bQdzb2bCD-86XfOUVmp5xjOANaefT4ZdWSCf_picqYtsAN5McX_3gVEfdVa5EA4h9e2noiaNLwUhMK8VaGx1mQGI_7TCnpmEI3LxtgNPeVpKsojjSbqSZh50VbyrTiP7_2KOIusBBsC/s1024/1000073990.png",
         "apiVersion": 1,
-        "fileHash": "sha256-55e5a14bf7a76aad0dd02c0b29e75399f9075d97cb122ca42c6f8473fc5657e4"
+        "fileHash": "sha256-14345436a268be3929d67edad15cbaca85120137806c9dd21793ef1dd65665b3"
     }
 ]
