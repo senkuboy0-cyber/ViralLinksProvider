@@ -5,7 +5,6 @@ import android.app.Dialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.Gravity
@@ -27,35 +26,11 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.lagradost.cloudstream3.plugins.Plugin
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-
-object MusicbdLogger {
-    private val logs = mutableListOf<String>()
-    
-    fun log(message: String) {
-        val timestamp = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
-        logs.add("[$timestamp] $message")
-        if (logs.size > 200) {
-            logs.removeAt(0)
-        }
-    }
-    
-    fun getLogs(): String {
-        return if (logs.isEmpty()) "No logs available. Use MusicbdLogger.log(\"message\") to add logs." else logs.joinToString("\n")
-    }
-    
-    fun clearLogs() {
-        logs.clear()
-    }
-}
 
 class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFragment() {
 
     private lateinit var bypassBtn: Button
     private lateinit var ctx: Context
-    private lateinit var logTextView: TextView
 
     private fun getPluginDrawable(name: String): Drawable? {
         val id = plugin.resources?.getIdentifier(name, "drawable", "com.musicbd") ?: 0
@@ -186,9 +161,9 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
         
         bypassBtn = Button(ctx).apply {
             text = if (MusicbdPlugin.cfCookies.isNotBlank()) {
-                "Cookies Saved - Refresh"
+                "✅ Cookies Saved - Refresh"
             } else {
-                "Bypass Protection"
+                "🛡️ Bypass Protection"
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -199,7 +174,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                     targetUrl = "https://musicbd25.site",
                     onFinished = { saved ->
                         if (saved) {
-                            bypassBtn.text = "Cookies Saved - Refresh"
+                            bypassBtn.text = "✅ Cookies Saved - Refresh"
                             Toast.makeText(ctx, "Done! Cookies saved", Toast.LENGTH_SHORT).show()
                         }
                     }
@@ -243,7 +218,7 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
                         MusicbdPlugin.cfUserAgent = ""
                         MusicbdPlugin.cfCookieHost = ""
                         
-                        bypassBtn.text = "Bypass Protection"
+                        bypassBtn.text = "🛡️ Bypass Protection"
                         Toast.makeText(ctx, "All Cookies cleared completely", Toast.LENGTH_SHORT).show()
                     }
                     .setNegativeButton("Cancel") { d, _ -> d.dismiss() }
@@ -251,80 +226,6 @@ class MusicbdSettingsFragment(private val plugin: Plugin) : BottomSheetDialogFra
             }
         }
         mainLayout.addView(clearBtn)
-
-        val logDivider = View(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(1))
-                .apply { 
-                    topMargin = dpToPx(8)
-                    bottomMargin = dpToPx(12) 
-                }
-            setBackgroundColor(Color.parseColor("#333333"))
-        }
-        mainLayout.addView(logDivider)
-
-        val logSectionTitle = TextView(ctx).apply {
-            text = "Debug Logs"
-            textSize = 17f
-            setTextColor(Color.WHITE)
-            setPadding(0, 0, 0, dpToPx(8))
-        }
-        mainLayout.addView(logSectionTitle)
-
-        logTextView = TextView(ctx).apply {
-            text = MusicbdLogger.getLogs()
-            textSize = 11f
-            setTextColor(Color.parseColor("#4AF626")) 
-            typeface = Typeface.MONOSPACE
-            setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
-            setBackgroundColor(Color.parseColor("#121212"))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(200) 
-            ).apply { bottomMargin = dpToPx(8) }
-            
-            setTextIsSelectable(true)
-        }
-        
-        val logScrollView = ScrollView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(200)
-            ).apply { bottomMargin = dpToPx(8) }
-            addView(logTextView)
-        }
-        mainLayout.addView(logScrollView)
-
-        val logButtonsLayout = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dpToPx(16) }
-        }
-
-        val refreshLogsBtn = Button(ctx).apply {
-            text = "Refresh Logs"
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginEnd = dpToPx(4)
-            }
-            setOnClickListener {
-                logTextView.text = MusicbdLogger.getLogs()
-            }
-        }
-        logButtonsLayout.addView(refreshLogsBtn)
-
-        val clearLogsBtn = Button(ctx).apply {
-            text = "Clear Logs"
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = dpToPx(4)
-            }
-            setOnClickListener {
-                MusicbdLogger.clearLogs()
-                logTextView.text = MusicbdLogger.getLogs()
-                Toast.makeText(ctx, "Logs cleared", Toast.LENGTH_SHORT).show()
-            }
-        }
-        logButtonsLayout.addView(clearLogsBtn)
         
         scrollView.addView(mainLayout)
         return scrollView
